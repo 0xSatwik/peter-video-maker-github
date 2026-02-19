@@ -1,0 +1,27 @@
+# Family Guy Shorts - Episode 01
+# Format: SPEAKER|TAGS|LYRICS
+# Tags control voice style (Peter = deep, Stewie = high)
+
+PETER|male, deep, speech, clear, narrative|If you're still paying for AI voice cloners like ElevenLabs, you're literally burning money.
+PETER|male, deep, speech, clear, narrative|Instead, use this one secret open-source model.
+
+STEWIE|male, high, speech, clear, british|Peter, that sounds illegal or genius.
+STEWIE|male, high, speech, clear, british|Which is it?
+
+PETER|male, deep, speech, clear, excited|Genius.
+PETER|male, deep, speech, clear, excited|It's called MOSS TTS. It gives you production-grade cloning for free, no credit card drama.
+PETER|male, deep, speech, clear, excited|It even gives you high-fidelity, zero-shot cloning straight from a Google Colab T4 GPU, including a 5-second sample to full voice clone.
+
+STEWIE|male, high, speech, clear, skeptical|So, real cloning, not some toy demo?
+
+PETER|male, deep, speech, clear, confident|Real cloning.
+PETER|male, deep, speech, clear, confident|It acts like a beast.
+PETER|male, deep, speech, clear, confident|It routes your audio through a specialized architecture.
+PETER|male, deep, speech, clear, confident|You can hit long-form dialogue, fast conversational models, and high-stability renders, all with zero cost.
+
+STEWIE|male, high, speech, clear, curious|So I can prototype, build, and clone voices without paying a cent?
+
+PETER|male, deep, speech, clear, final|Exactly.
+PETER|male, deep, speech, clear, final|Same quality, better workflows, zero cost.
+PETER|male, deep, speech, clear, final|If you want the link and the English tutorial, comment VOICE and I'll DM it to you.
+PETER|male, deep, speech, clear, final|Or check the description if you're on YouTube, you lazy trolls.

@@ -6,7 +6,7 @@ on:
       script_file:
         description: 'Script file path'
         required: false
-        default: 'config/scripts/episode_01.txt'
+        default: 'config/scripts/EPISODE_01.txt'
       music_duration:
         description: 'Background music duration (seconds)'
         required: false

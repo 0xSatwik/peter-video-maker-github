@@ -60,7 +60,7 @@ def parse_script(script_path):
 
 def main():
     # Load script
-    script_path = os.environ.get('SCRIPT_PATH', 'config/scripts/episode_01.txt')
+    script_path = os.environ.get('SCRIPT_PATH', 'config/scripts/EPISODE_01.txt')
     lines = parse_script(script_path)
     
     print(f"📄 Loaded {len(lines)} dialogue lines from {script_path}")

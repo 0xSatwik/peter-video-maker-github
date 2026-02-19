@@ -33,26 +33,16 @@ jobs:
           TZ: UTC
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg imagemagick
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg imagemagick fonts-dejavu-core
       
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install "setuptools<75"
-          pip install openai-whisper==20231117 --no-build-isolation
           pip install -r requirements.txt
       
       - name: Create directories
         run: |
-          mkdir -p assets audio output config/scripts
-      
-      - name: Download sample background (if not exists)
-        run: |
-          if [ ! -f "assets/minecraft_bg.mp4" ]; then
-            echo "⚠️ No background video found. Using placeholder..."
-            wget -O assets/minecraft_bg.mp4 \
-              "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4" || true
-          fi
+          mkdir -p assets audio output
       
       - name: Generate ALL Audio (Voices + Music via HeartMuLa)
         env:
@@ -68,10 +58,13 @@ jobs:
           echo "📊 Audio files generated:"
           ls -la audio/
           echo "Total files: $(ls audio/*.mp3 2>/dev/null | wc -l)"
+          cat audio/metadata.json || echo "No metadata file"
       
-      - name: Assemble Video
+      - name: Assemble Video (with characters + layout)
+        env:
+          SCRIPT_PATH: ${{ github.event.inputs.script_file }}
         run: |
-          echo "🎬 Assembling video..."
+          echo "🎬 Assembling professional video..."
           python scripts/assemble_video.py
       
       - name: Add Auto-Captions
@@ -83,6 +76,7 @@ jobs:
         run: |
           echo "✅ Final video stats:"
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_reel.mp4
+          ffprobe -v error -show_entries stream=width,height -of default=noprint_wrappers=1 output/final_reel.mp4
           ls -lh output/
       
       - name: Upload final video

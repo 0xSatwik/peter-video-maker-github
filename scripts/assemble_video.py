@@ -1,39 +1,273 @@
-from moviepy.editor import *
-import glob, os
+from moviepy.editor import (
+    VideoFileClip, AudioFileClip, ImageClip, TextClip,
+    CompositeVideoClip, CompositeAudioClip, ColorClip,
+    concatenate_audioclips
+)
+from PIL import Image
+import numpy as np
+import glob
+import os
+import json
+
+# === CONSTANTS ===
+CANVAS_W, CANVAS_H = 1080, 1920
+TOP_H = 960       # Top half: background video (clean for overlay editing)
+BOTTOM_H = 960    # Bottom half: characters + captions panel
+CHAR_HEIGHT = 500  # Character image height
+CHAR_MARGIN = 30   # Margin from left edge
+FPS = 24
+
+# Character colors for name badges
+CHAR_COLORS = {
+    'peter': {'badge': '#2E86AB', 'text': 'white'},
+    'stewie': {'badge': '#A23B72', 'text': 'white'},
+}
+
+
+
+
+def load_character(name):
+    """Load and prepare a character image."""
+    # Try common extensions
+    for ext in ['png', 'jpg', 'jpeg']:
+        path = f'assets/{name}.{ext}'
+        if os.path.exists(path):
+            img = Image.open(path).convert("RGBA")
+            data = np.array(img)
+
+            # Remove near-black bg
+            black_mask = (data[:, :, 0] < 40) & \
+                         (data[:, :, 1] < 40) & \
+                         (data[:, :, 2] < 40)
+            # Remove near-white bg
+            white_mask = (data[:, :, 0] > 215) & \
+                         (data[:, :, 1] > 215) & \
+                         (data[:, :, 2] > 215)
+            data[black_mask | white_mask, 3] = 0
+
+            # Resize to target height
+            scale = CHAR_HEIGHT / img.height
+            new_w = int(img.width * scale)
+            img_resized = Image.fromarray(data).resize((new_w, CHAR_HEIGHT), Image.LANCZOS)
+
+            return np.array(img_resized)
+
+    print(f"⚠️ Character image not found for '{name}'")
+    return None
+
+
+def create_bottom_panel():
+    """Create a dark semi-transparent panel for the bottom half."""
+    panel = ColorClip(size=(CANVAS_W, BOTTOM_H), color=(15, 15, 25))
+    return panel
+
 
 def assemble():
-    # Load background
-    bg = VideoFileClip('assets/minecraft_bg.mp4').resize(height=1920)
-    w, h = bg.size
-    bg = bg.crop(x1=w//2 - 540, width=1080, height=1920)
-    
-    # Load ALL audio files IN ORDER
-    audio_files = sorted(glob.glob('audio/*.mp3'))
-    
-    if not audio_files:
-        raise Exception("No audio clips found in audio/")
-    
-    print(f"🎵 Found {len(audio_files)} audio clips")
-    
-    # Separate voice clips from background music
-    voice_clips = [f for f in audio_files if 'background_music' not in f]
-    music_clip = [f for f in audio_files if 'background_music' in f]
-    
-    # Combine voice clips in order
-    audio = concatenate_audioclips([AudioFileClip(f) for f in voice_clips])
-    
-    # Add background music (lower volume)
-    if music_clip:
-        music = AudioFileClip(music_clip[0]).volumex(0.2)
-        if music.duration < audio.duration:
-            music = music.loop(duration=audio.duration)
-        audio = CompositeAudioClip([audio, music])
-    
-    final = bg.set_audio(audio)
-    
+    print("🎬 Starting professional video assembly...")
+
+    # --- Load metadata ---
+    if os.path.exists('audio/metadata.json'):
+        with open('audio/metadata.json', 'r') as f:
+            metadata = json.load(f)
+    else:
+        raise Exception("❌ audio/metadata.json not found. Run generate_audio.py first.")
+
+    # --- Load background video ---
+    if os.path.exists('assets/minecraft_bg.mp4'):
+        bg_raw = VideoFileClip('assets/minecraft_bg.mp4')
+    else:
+        raise Exception("❌ Background video not found at assets/minecraft_bg.mp4")
+
+    # Resize background to fill top half (1080 x 960)
+    bg_scale = max(CANVAS_W / bg_raw.w, TOP_H / bg_raw.h)
+    bg = bg_raw.resize(bg_scale)
+    # Center crop to exactly 1080x960
+    bw, bh = bg.size
+    bg = bg.crop(
+        x1=max(0, (bw - CANVAS_W) // 2),
+        y1=max(0, (bh - TOP_H) // 2),
+        width=CANVAS_W,
+        height=TOP_H
+    )
+
+    # --- Load character images ---
+    characters = {}
+    for name in ['peter', 'stewie']:
+        char_img = load_character(name)
+        if char_img is not None:
+            characters[name] = char_img
+            print(f"✅ Loaded character: {name} ({char_img.shape[1]}x{char_img.shape[0]})")
+
+    # --- Load voice audio clips and calculate timing ---
+    voice_clips = []
+    clip_timing = []  # (start_time, end_time, speaker, text, index)
+    current_time = 0.0
+
+    for entry in metadata:
+        audio_path = entry['audio_file']
+        if not entry.get('exists', False) or not os.path.exists(audio_path):
+            print(f"⚠️ Skipping missing audio: {audio_path}")
+            continue
+
+        clip = AudioFileClip(audio_path)
+        voice_clips.append(clip)
+        clip_timing.append({
+            'start': current_time,
+            'end': current_time + clip.duration,
+            'speaker': entry['speaker'],
+            'text': entry['text'],
+            'index': entry['index']
+        })
+        current_time += clip.duration
+
+    if not voice_clips:
+        raise Exception("❌ No audio clips found!")
+
+    print(f"🎵 Loaded {len(voice_clips)} voice clips, total duration: {current_time:.1f}s")
+
+    # Concatenate voice audio
+    voice_audio = concatenate_audioclips(voice_clips)
+
+    # --- Add background music ---
+    bg_music_path = 'audio/background_music.mp3'
+    if os.path.exists(bg_music_path):
+        music = AudioFileClip(bg_music_path).volumex(0.15)
+        if music.duration < voice_audio.duration:
+            music = music.loop(duration=voice_audio.duration)
+        else:
+            music = music.subclip(0, voice_audio.duration)
+        final_audio = CompositeAudioClip([voice_audio, music])
+        print("🎶 Background music added")
+    else:
+        final_audio = voice_audio
+        print("⚠️ No background music found, using voice only")
+
+    total_duration = voice_audio.duration
+
+    # --- Loop background video to match total duration ---
+    if bg.duration < total_duration:
+        bg = bg.loop(duration=total_duration)
+    else:
+        bg = bg.subclip(0, total_duration)
+
+    # --- Build the video layers ---
+    # Layer 1: Full black canvas
+    canvas = ColorClip(size=(CANVAS_W, CANVAS_H), color=(10, 10, 18)).set_duration(total_duration)
+
+    # Layer 2: Background video in top half
+    bg_top = bg.set_position((0, 0))
+
+    # Layer 3: Dark bottom panel
+    bottom_panel = ColorClip(
+        size=(CANVAS_W, BOTTOM_H), color=(18, 18, 30)
+    ).set_opacity(0.95).set_duration(total_duration).set_position((0, TOP_H))
+
+    # Subtle gradient line between top and bottom
+    divider = ColorClip(
+        size=(CANVAS_W, 3), color=(80, 180, 255)
+    ).set_opacity(0.6).set_duration(total_duration).set_position((0, TOP_H))
+
+    layers = [canvas, bg_top, bottom_panel, divider]
+
+    # Layer 4: Character images (timed to their dialogue)
+    for timing in clip_timing:
+        speaker = timing['speaker']
+        if speaker in characters:
+            char_data = characters[speaker]
+            char_clip = (
+                ImageClip(char_data)
+                .set_start(timing['start'])
+                .set_end(timing['end'])
+                .set_position((CHAR_MARGIN, TOP_H + (BOTTOM_H - CHAR_HEIGHT) // 2))
+                .crossfadein(0.2)
+                .crossfadeout(0.2)
+            )
+            layers.append(char_clip)
+
+    # Layer 5: Speaker name badges
+    for timing in clip_timing:
+        speaker = timing['speaker']
+        colors = CHAR_COLORS.get(speaker, {'badge': '#555555', 'text': 'white'})
+
+        try:
+            name_clip = (
+                TextClip(
+                    speaker.upper(),
+                    fontsize=36,
+                    color=colors['text'],
+                    font='DejaVu-Sans-Bold',
+                    bg_color=colors['badge'],
+                    method='label'
+                )
+                .set_start(timing['start'])
+                .set_end(timing['end'])
+                .set_position((CHAR_MARGIN + 10, TOP_H + 20))
+                .crossfadein(0.2)
+                .crossfadeout(0.2)
+            )
+            layers.append(name_clip)
+        except Exception as e:
+            print(f"⚠️ Could not create name badge: {e}")
+
+    # Layer 6: Dialogue text on the right side of bottom panel
+    for timing in clip_timing:
+        text = timing['text']
+        speaker = timing['speaker']
+
+        # Calculate text area: right side of bottom panel
+        # Character takes ~left 350px, text goes in remaining space
+        text_x = 400
+        text_w = CANVAS_W - text_x - 40  # right margin
+
+        try:
+            # Main dialogue text
+            txt_clip = (
+                TextClip(
+                    text,
+                    fontsize=40,
+                    color='white',
+                    font='DejaVu-Sans-Bold',
+                    stroke_color='black',
+                    stroke_width=1.5,
+                    method='caption',
+                    size=(text_w, None),
+                    align='West'
+                )
+                .set_start(timing['start'])
+                .set_end(timing['end'])
+                .set_position((text_x, TOP_H + BOTTOM_H // 2 - 80))
+                .crossfadein(0.3)
+                .crossfadeout(0.2)
+            )
+            layers.append(txt_clip)
+        except Exception as e:
+            print(f"⚠️ Could not create text clip: {e}")
+
+    # --- Compose final video ---
+    print("🎞️ Compositing all layers...")
+    final_video = CompositeVideoClip(layers, size=(CANVAS_W, CANVAS_H))
+    final_video = final_video.set_audio(final_audio)
+    final_video = final_video.set_duration(total_duration)
+
     os.makedirs('output', exist_ok=True)
-    final.write_videofile('output/final.mp4', fps=24, codec='libx264')
-    print(f"✅ Video assembled: output/final.mp4 ({audio.duration:.1f}s)")
+    output_path = 'output/final_reel.mp4'
+
+    print(f"💾 Writing video to {output_path}...")
+    final_video.write_videofile(
+        output_path,
+        fps=FPS,
+        codec='libx264',
+        audio_codec='aac',
+        preset='medium',
+        threads=2
+    )
+
+    print(f"✅ Video assembled: {output_path} ({total_duration:.1f}s)")
+
+    # Save timing data for potential caption refinement
+    with open('output/timing.json', 'w') as f:
+        json.dump(clip_timing, f, indent=2)
+
 
 if __name__ == '__main__':
     assemble()

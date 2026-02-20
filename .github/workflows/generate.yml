@@ -63,7 +63,7 @@ jobs:
       - name: Verify audio files
         run: |
           echo "📊 Audio files generated:"
-          ls -lh audio/
+          ls -lh audio/ || echo "No audio directory"
           echo ""
           echo "Total WAV files: $(ls audio/*.wav 2>/dev/null | wc -l)"
           echo ""
@@ -76,7 +76,7 @@ jobs:
           echo "🎬 Background video:"
           ffprobe -v error -show_entries format=duration:stream=width,height -of json assets/minecraft_bg.mp4 2>/dev/null || echo "No bg video"
       
-      - name: Assemble Video (DEBUG)
+      - name: Assemble Video
         env:
           SCRIPT_PATH: ${{ github.event.inputs.script_file }}
           PYTHONUNBUFFERED: '1'
@@ -101,29 +101,18 @@ jobs:
           path: output/final_reel.mp4
           retention-days: 30
 
-      - name: Clean up audio files with invalid characters
-        run: |
-          # Remove any files with colons or other invalid characters in names
-          # GitHub Actions artifacts don't support these characters
-          find audio/ -type f ! -name '*.wav' ! -name 'metadata.json' -delete 2>/dev/null || true
-          find audio/ -name '*:*' -delete 2>/dev/null || true
-          find audio/ -name '*"*' -delete 2>/dev/null || true
-          find audio/ -name '*<*' -delete 2>/dev/null || true
-          find audio/ -name '*>*' -delete 2>/dev/null || true
-          find audio/ -name '*|*' -delete 2>/dev/null || true
-          find audio/ -name '*?*' -delete 2>/dev/null || true
-          echo "Cleaned up files with invalid characters"
-          echo "Remaining files:"
-          ls -la audio/
-
       - name: Upload audio files
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: audio-files-${{ github.run_number }}
-          path: audio/
+          path: |
+            audio/*.wav
+            audio/metadata.json
           retention-days: 30
       
       - name: Create summary
+        if: always()
         run: |
           echo "## 🎬 Video Generated Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

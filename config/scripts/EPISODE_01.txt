@@ -1,5 +1,5 @@
-Family Guy Shorts - Episode 01 (Updated)
-Format: SPEAKER|TAGS|LYRICS
+# Family Guy Shorts - Episode 01 (Updated)
+# Format: SPEAKER|TAGS|LYRICS
 
 PETER|male, deep, speech, clear, narrative|If you're still paying for AI voice cloners like ElevenLabs, you're literally burning money. Instead, use this one secret open-source model.
 

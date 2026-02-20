@@ -156,8 +156,8 @@ def assemble():
             # Paste with alpha
             bg_img.paste(char_img, (cx, char_y), char_img)
             
-            # Save as PNG for lossless quality
-            bg_img.convert("RGB").save(bg_path, quality=95)
+            # Save as PNG (lossless)
+            bg_img.convert("RGB").save(bg_path)
             
         if f_idx % 200 == 0 and f_idx > 0:
             log(f"   Processed {f_idx}/{total_frames} frames...")

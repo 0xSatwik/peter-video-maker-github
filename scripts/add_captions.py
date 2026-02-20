@@ -104,17 +104,26 @@ def add_captions():
 
     print(f"✨ Created {len(caption_clips)} caption segments")
 
+    temp_output = 'output/final_reel_captioned.mp4'
     final = CompositeVideoClip([video] + caption_clips)
     final.write_videofile(
-        'output/final_reel.mp4',
+        temp_output,
         fps=24,
         codec='libx264',
         audio_codec='aac',
         preset='medium',
         threads=2
     )
+    
+    # Close clips to release file handles
+    video.close()
+    final.close()
+    
+    # Replace original with captioned version
+    import shutil
+    shutil.move(temp_output, 'output/final_reel.mp4')
+    
     print("✅ Final video with captions: output/final_reel.mp4")
-
 
 if __name__ == '__main__':
     add_captions()

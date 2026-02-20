@@ -122,7 +122,7 @@ def parse_script(script_path):
                 continue
             parts = line.split('|')
             if len(parts) == 3:
-                speaker = speaker.strip().lower()
+                speaker = parts[0].strip().lower()
                 text = preprocess_text(parts[2].strip())
                 
                 if not text.endswith(('.', '!', '?', '"', "'")):

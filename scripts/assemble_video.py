@@ -113,12 +113,14 @@ def assemble():
     os.makedirs(frames_dir, exist_ok=True)
     
     # Export background video to frames directly (looping and scaling)
+    # Added -qscale:v 2 for highest quality JPEG extraction
     subprocess.run([
         'ffmpeg', '-y', 
         '-stream_loop', '-1', 
         '-i', 'assets/minecraft_bg.mp4',
         '-t', str(total_duration),
         '-vf', f'scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,crop={CANVAS_W}:{CANVAS_H},fps={FPS}',
+        '-qscale:v', '2',
         f'{frames_dir}/bg_%05d.jpg'
     ], check=True, capture_output=True)
     
@@ -153,7 +155,7 @@ def assemble():
             # Paste with alpha
             bg_img.paste(char_img, (cx, char_y), char_img)
             
-            # Overwrite the frame (as RGB jpg to save space/time, or we could save as PNG, but JPG is faster)
+            # Save at high quality
             bg_img.convert("RGB").save(bg_path, quality=95)
             
         if f_idx % 200 == 0 and f_idx > 0:
@@ -163,31 +165,40 @@ def assemble():
     log(f"   ✅ Compositing done in {comp_time:.1f}s")
     
     # --- Assemble Audio ---
-    log("\n🎵 ASSEMBLING AUDIO...")
-    # Create an ffmpeg concat list file
-    with open('output/audio_concat.txt', 'w') as f:
-        for audio_path in audio_files_to_concat:
-            f.write(f"file '../{audio_path}'\n")
-            
-            # If we need the 0.3s gap, ffmpeg concat demuxer doesn't do silence easily.
-            # Easiest way is to generate a dummy 0.3s silence file once:
-            
-    if not os.path.exists('output/silence.wav'):
-        subprocess.run([
-            'ffmpeg', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', 
-            '-t', str(GAP_SECONDS), 'output/silence.wav'
-        ], check=True, capture_output=True)
+    log("\n🎵 ASSEMBLING AUDIO (EXACT SYNC)...")
+    
+    # Instead of concat (which drifts), build a precise ffmpeg filter to place each audio exactly 
+    # where timing.json says it should be.
+    
+    filter_complex = []
+    ffmpeg_inputs = []
+    
+    for i, _ in enumerate(audio_files_to_concat):
+        audio_path = audio_files_to_concat[i]
+        timing = clip_timing[i]
         
-    with open('output/audio_concat.txt', 'w') as f:
-        for audio_path in audio_files_to_concat:
-            f.write(f"file '../{audio_path}'\n")
-            f.write(f"file 'silence.wav'\n")
-            
-    subprocess.run([
-        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', 
-        '-i', 'output/audio_concat.txt', 
-        '-c', 'copy', 'output/combined_audio.wav'
-    ], check=True, capture_output=True)
+        ffmpeg_inputs.extend(['-i', audio_path])
+        
+        delay_ms = int(timing['start'] * 1000)
+        # adelay takes delay times for each channel, we provide both L and R
+        filter_complex.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
+
+    # Mix them all together
+    mix_inputs = "".join([f"[a{i}]" for i in range(len(audio_files_to_concat))])
+    # Use amix with duration=longest to ensure it doesn't cut off early
+    filter_complex.append(f"{mix_inputs}amix=inputs={len(audio_files_to_concat)}:duration=longest:dropout_transition=0,volume={len(audio_files_to_concat)}[outa]")
+    
+    filter_str = ";".join(filter_complex)
+    
+    cmd = ['ffmpeg', '-y'] + ffmpeg_inputs + [
+        '-filter_complex', filter_str,
+        '-map', '[outa]',
+        '-c:a', 'pcm_s16le',
+        '-t', str(total_duration),
+        'output/combined_audio.wav'
+    ]
+    
+    subprocess.run(cmd, check=True, capture_output=True)
     
     # --- Final Video Encoding ---
     log("\n🎞️ ENCODING FINAL VIDEO...")

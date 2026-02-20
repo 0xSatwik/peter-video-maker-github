@@ -1,403 +1,342 @@
-# Implementation Plan: Fix Video Generation Issues (UPDATED)
+# Implementation Plan: Fix Timing Sync & Background Quality Issues
 
 ## Problem Summary
 
-Based on the debug log analysis, the code logic is **correct** but the output video still shows:
-1. **Only Peter character** throughout the video (even during Stewie's lines)
-2. **Static background** instead of animated video
+The previous issues (Stewie not showing, background static) are now **FIXED**. However, two new issues have emerged:
+
+1. **Background video quality is poor** - JPG compression artifacts
+2. **Character, caption, and audio timing don't match** - Synchronization issues
 
 ---
 
-## Debug Log Analysis
+## Root Cause Analysis
 
-### What the Log Shows (ALL CORRECT):
-```
-Characters available: ['peter', 'stewie']  ✅
-[2] stewie   at x= 733 y=1440 t=10.1-13.4  ✅ (Stewie on RIGHT)
-[3] stewie   at x= 733 y=1440 t=13.7-14.8  ✅
-[7] stewie   at x= 733 y=1440 t=32.5-35.2  ✅
-[12] stewie  at x= 733 y=1440 t=49.6-54.2  ✅
-Output probe: nb_frames=1636, duration=68.2s  ✅ (Background has frames)
+### Issue 1: Poor Background Quality
+
+**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:122)
+
+```python
+f'{frames_dir}/bg_%05d.jpg'  # JPG with default quality
 ```
 
-### What the Video Shows (INCORRECT):
-- Peter character visible during Stewie's lines
-- Background appears static (not animating)
+**Problem**: 
+- Background frames are saved as JPG with **default quality** (75)
+- No quality specified when re-encoding frames
+- Each frame goes through: Original → JPG decode → composite → JPG encode → final video
+- This double compression degrades quality significantly
+
+### Issue 2: Timing Mismatch (Character, Caption, Audio)
+
+**Root Causes**:
+
+#### 2a. Extra Silence at End of Audio
+**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:181-184)
+
+```python
+for audio_path in audio_files_to_concat:
+    f.write(f"file '../{audio_path}'\n")
+    f.write(f"file 'silence.wav'\n")  # <-- Silence added AFTER EVERY clip including LAST
+```
+
+**Problem**: Silence is added after the LAST audio clip too, making audio longer than video frames.
+
+#### 2b. Frame Calculation Rounding
+**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:130-131)
+
+```python
+start_f = int(timing['start'] * FPS)  # Truncates, doesn't round
+end_f = int(timing['end'] * FPS)
+```
+
+**Problem**: Integer truncation causes up to 1 frame (41ms) timing drift per clip.
+
+#### 2c. Caption Re-encoding Drift
+**Location**: [`scripts/add_captions.py`](scripts/add_captions.py:107-116)
+
+```python
+final = CompositeVideoClip([video] + caption_clips)
+final.write_videofile(temp_output, fps=24, ...)
+```
+
+**Problem**: MoviePy re-encodes the entire video, potentially introducing timing shifts.
+
+#### 2d. Caption Chunk Timing
+**Location**: [`scripts/add_captions.py`](scripts/add_captions.py:72-76)
+
+```python
+chunk_duration = duration / len(chunks)
+for ci, chunk in enumerate(chunks):
+    chunk_start = start + (ci * chunk_duration)
+    chunk_end = chunk_start + chunk_duration
+```
+
+**Problem**: Captions are split evenly across duration, but speech doesn't follow even patterns. Words at the end of a sentence are often spoken faster.
 
 ---
 
-## Root Cause Analysis (UPDATED)
+## Implementation Plan
 
-### Issue 1: Stewie Character Not Visible
+### Phase 1: Fix Background Quality
 
-**The REAL Problem**: Looking at the debug data:
+#### 1.1 Use PNG Instead of JPG for Intermediate Frames
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:122)
 
-```
---- STEWIE ---
-Raw size: 200x252, channels=4
-Alpha: 54.3% opaque, 44.2% transparent
-✅ Final: 317x400, shape=(400, 317, 4)
-```
+```python
+# Change from:
+f'{frames_dir}/bg_%05d.jpg'
 
-Stewie's image is **44.2% transparent** already, meaning it has transparency. But the issue is:
-
-1. **Stewie image is TOO SMALL** (200x252 original vs Peter's 848x1232)
-2. **When scaled up 1.58x to 400px height**, the image may become pixelated or have rendering issues
-3. **The transparency data may not be rendering correctly** in MoviePy's CompositeVideoClip
-
-**Hypothesis**: The Stewie PNG might have:
-- Premultiplied alpha that's not being handled correctly
-- Very light/semi-transparent pixels that blend into the background
-- Color data that's similar to the background color
-
-### Issue 2: Background Video Static
-
-**The REAL Problem**: The ffmpeg output shows:
-```
-Output probe: nb_frames=1636, duration=68.2s
+# To:
+f'{frames_dir}/bg_%05d.png'
 ```
 
-This is correct - 1636 frames at 24fps = ~68 seconds. BUT:
+#### 1.2 Increase Quality for Final Encoding
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:201)
 
-1. **The background video might have very subtle motion** that looks static
-2. **MoviePy might be caching the first frame** due to how CompositeVideoClip works
-3. **The video encoding might have issues** with the preset='medium' setting
+```python
+# Change from:
+'-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+
+# To:
+'-c:v', 'libx264', '-preset', 'slow', '-crf', '18',  # Lower CRF = higher quality
+```
+
+#### 1.3 Alternative: Use High-Quality JPG
+If PNG is too slow, use high-quality JPG:
+
+```python
+# In ffmpeg export (line 122):
+f'{frames_dir}/bg_%05d.jpg'
+
+# Add quality option in ffmpeg:
+'-q:v', '2',  # High quality JPG (1-31, lower is better)
+```
+
+And when saving composited frames (line 157):
+```python
+bg_img.convert("RGB").save(bg_path, quality=95)  # Already at 95, good
+```
 
 ---
 
-## Implementation Plan (UPDATED)
+### Phase 2: Fix Timing Synchronization
 
-### Phase 1: Fix Stewie Character Visibility
-
-#### 1.1 Debug Stewie Image Content
-Add code to verify Stewie's image actually has visible content:
+#### 2.1 Remove Extra Silence at End of Audio
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:181-184)
 
 ```python
-# After loading Stewie
-if name == 'stewie':
-    # Check if image has actual color content
-    rgb = char_data[:, :, :3]
-    alpha = char_data[:, :, 3]
-    
-    # Count non-transparent pixels with color
-    visible_mask = alpha > 128
-    visible_rgb = rgb[visible_mask]
-    
-    print(f"  📊 Stewie visible pixels: {np.sum(visible_mask)}")
-    print(f"  📊 Stewie RGB range: R={visible_rgb[:,0].min()}-{visible_rgb[:,0].max()}, "
-          f"G={visible_rgb[:,1].min()}-{visible_rgb[:,1].max()}, "
-          f"B={visible_rgb[:,2].min()}-{visible_rgb[:,2].max()}")
-    
-    # Save debug image
-    from PIL import Image
-    debug_img = Image.fromarray(char_data)
-    debug_img.save('output/debug_stewie.png')
-    print(f"  📊 Saved debug image: output/debug_stewie.png")
+# Change from:
+with open('output/audio_concat.txt', 'w') as f:
+    for audio_path in audio_files_to_concat:
+        f.write(f"file '../{audio_path}'\n")
+        f.write(f"file 'silence.wav'\n")  # Adds silence after EVERY clip
+
+# To:
+with open('output/audio_concat.txt', 'w') as f:
+    for i, audio_path in enumerate(audio_files_to_concat):
+        f.write(f"file '../{audio_path}'\n")
+        # Only add silence AFTER clips, not after the last one
+        if i < len(audio_files_to_concat) - 1:
+            f.write(f"file 'silence.wav'\n")
 ```
 
-#### 1.2 Fix Potential Alpha Compositing Issue
-The issue might be with how MoviePy handles RGBA arrays. Try converting to explicit RGB with mask:
+#### 2.2 Fix Frame Calculation Rounding
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:130-131)
 
 ```python
-def make_char_clip(char_data, start, end, position):
-    """Create a character clip with proper alpha handling."""
-    
-    # Ensure the image is in RGBA format
-    if char_data.shape[2] == 4:
-        # Create clip from RGBA
-        clip = ImageClip(char_data, transparent=True)
-    else:
-        clip = ImageClip(char_data)
-    
-    return clip.set_start(start).set_end(end).set_position(position)
+# Change from:
+start_f = int(timing['start'] * FPS)
+end_f = int(timing['end'] * FPS)
+
+# To:
+start_f = round(timing['start'] * FPS)
+end_f = round(timing['end'] * FPS)
 ```
 
-#### 1.3 Alternative: Pre-render Characters on Solid Background
-If alpha compositing is the issue, pre-render characters:
+#### 2.3 Ensure Total Duration Matches Audio Exactly
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:88-89)
 
 ```python
-def load_character(name):
-    """Load character and pre-render on transparent background."""
-    # ... existing loading code ...
-    
-    # Ensure alpha channel is proper
-    if char_data.shape[2] == 4:
-        # Make sure alpha is binary (0 or 255) for cleaner compositing
-        alpha = char_data[:, :, 3]
-        alpha[alpha > 128] = 255
-        alpha[alpha <= 128] = 0
-        char_data[:, :, 3] = alpha
-    
-    return char_data
-```
-
-### Phase 2: Fix Background Video Animation
-
-#### 2.1 Verify Background is Actually Playing
-Add frame extraction to verify:
-
-```python
-# After preparing background
-print("📊 Extracting first and last frames for verification...")
-import subprocess
-
-# Extract first frame
+# After calculating total_duration, verify it matches the actual audio duration
+# Get actual concatenated audio duration
 subprocess.run([
-    'ffmpeg', '-y', '-i', output_path,
-    '-vf', 'select=eq(n\\,0)',
-    '-frames:v', '1',
-    'output/bg_frame_first.png'
-], capture_output=True)
+    'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+    '-i', 'output/audio_concat.txt',
+    '-c', 'copy', 'output/combined_audio.wav'
+], check=True, capture_output=True)
 
-# Extract frame at 50%
-subprocess.run([
-    'ffmpeg', '-y', '-i', output_path,
-    '-vf', f'select=eq(n\\,{1636//2})',
-    '-frames:v', '1',
-    'output/bg_frame_middle.png'
-], capture_output=True)
+# Get actual audio duration
+probe = subprocess.run(
+    ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', 'output/combined_audio.wav'],
+    capture_output=True, text=True
+)
+actual_audio_duration = float(json.loads(probe.stdout)['format']['duration'])
 
-# Extract last frame
-subprocess.run([
-    'ffmpeg', '-y', '-i', output_path,
-    '-vf', 'select=eq(n\\,1635)',
-    '-frames:v', '1',
-    'output/bg_frame_last.png'
-], capture_output=True)
-
-print("📊 Saved bg_frame_first.png, bg_frame_middle.png, bg_frame_last.png")
+# Use audio duration for video
+total_duration = actual_audio_duration
+total_frames = int(total_duration * FPS) + 1
 ```
 
-#### 2.2 Alternative: Use Different Background Loading Method
-The issue might be with how MoviePy loads the prepared video:
+---
+
+### Phase 3: Fix Caption Timing
+
+#### 3.1 Render Captions Directly on Frames (Same as Characters)
+**Best Solution**: Instead of using MoviePy for captions, render them directly on frames during the frame-by-frame compositing phase.
+
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:125-163)
+
+Add caption rendering to the frame compositing loop:
 
 ```python
-# Instead of:
-bg_video = VideoFileClip(bg_temp)
+from PIL import Image, ImageDraw, ImageFont
 
-# Try:
-from moviepy.editor import VideoFileClip
-bg_video = VideoFileClip(bg_temp, audio=False)
-bg_video = bg_video.set_duration(total_duration)
+# Load font
+try:
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
+except:
+    font = ImageFont.load_default()
 
-# Verify it's actually a video
-print(f"📊 Background: duration={bg_video.duration}, fps={bg_video.fps}, size={bg_video.size}")
-print(f"📊 Background has {int(bg_video.duration * bg_video.fps)} frames")
+# In the frame loop:
+for f_idx in range(total_frames):
+    bg_path = f"{frames_dir}/bg_{f_idx+1:05d}.png"
+    if not os.path.exists(bg_path):
+        break
+        
+    speaker = frame_speakers[f_idx]
+    current_time = f_idx / FPS
+    
+    # Load frame
+    bg_img = Image.open(bg_path).convert("RGBA")
+    
+    # Composite character
+    if speaker and speaker in characters:
+        char_img = characters[speaker]
+        if speaker == 'peter':
+            cx = 30
+        else:
+            cx = CANVAS_W - char_img.width - 30
+        bg_img.paste(char_img, (cx, char_y), char_img)
+    
+    # Find and render caption
+    for timing in clip_timing:
+        if timing['start'] <= current_time < timing['end']:
+            # Calculate which chunk to show
+            text = timing['text']
+            words = text.split()
+            chunk_size = 7
+            chunks = [' '.join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+            
+            if chunks:
+                duration = timing['end'] - timing['start']
+                chunk_duration = duration / len(chunks)
+                time_in_clip = current_time - timing['start']
+                chunk_idx = min(int(time_in_clip / chunk_duration), len(chunks) - 1)
+                chunk = chunks[chunk_idx]
+                
+                # Render text
+                draw = ImageDraw.Draw(bg_img)
+                
+                # Get text bounding box
+                bbox = draw.textbbox((0, 0), chunk, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_x = (CANVAS_W - text_width) // 2
+                text_y = 1050  # Same as caption_y in add_captions.py
+                
+                # Draw with stroke (outline)
+                stroke_width = 3
+                # Draw stroke by drawing text multiple times offset
+                for ox in range(-stroke_width, stroke_width + 1):
+                    for oy in range(-stroke_width, stroke_width + 1):
+                        if ox != 0 or oy != 0:
+                            draw.text((text_x + ox, text_y + oy), chunk, font=font, fill='black')
+                # Draw main text
+                draw.text((text_x, text_y), chunk, font=font, fill='yellow')
+            break
+    
+    # Save frame
+    bg_img.convert("RGB").save(bg_path, quality=95)
 ```
 
-### Phase 3: Fix CompositeVideoClip Rendering
-
-#### 3.1 The Real Issue: Layer Order and Timing
-Looking at the code more carefully, I see a potential issue:
+#### 3.2 Alternative: Keep MoviePy Captions But Fix Timing
+If keeping MoviePy for captions, ensure timing is preserved:
 
 ```python
-layers = [bg_video]  # Background first
-
-for timing in clip_timing:
-    # ... create character clip ...
-    layers.append(char_clip)
-
-final_video = CompositeVideoClip(layers, size=(CANVAS_W, CANVAS_H))
-```
-
-**The Problem**: Each character clip is only visible during its specific time range. When Stewie's clip ends, there's NO character visible until Peter's next clip starts.
-
-**But wait** - the debug shows consecutive clips with gaps:
-```
-[1] peter    at x=  30 y=1440 t=6.1-9.8
-[2] stewie   at x= 733 y=1440 t=10.1-13.4  # Gap from 9.8 to 10.1
-```
-
-The gaps are only 0.3s (GAP_SECONDS), which is correct.
-
-#### 3.2 Potential MoviePy Bug with ImageClip
-MoviePy's ImageClip might have issues with the `set_start()` and `set_end()` methods when used in CompositeVideoClip.
-
-**Solution**: Use `set_duration()` and `set_start()` instead:
-
-```python
-char_clip = (
-    ImageClip(char_data)
-    .set_duration(timing['end'] - timing['start'])
-    .set_start(timing['start'])
-    .set_position((cx, char_y))
+# In add_captions.py, use copy codec for video to avoid re-encoding
+final.write_videofile(
+    temp_output,
+    fps=24,
+    codec='libx264',
+    audio_codec='copy',  # Copy audio without re-encoding
+    preset='medium',
+    threads=2
 )
 ```
 
-#### 3.3 Alternative: Pre-compose Character Clips Differently
-Try a different approach - create separate videos for each character and overlay:
+---
+
+### Phase 4: Add Timing Verification Logging
+
+Add debug output to verify timing alignment:
 
 ```python
-# Create a single clip for each character that spans the entire video
-# with visibility only during their lines
+# After assembling audio
+log(f"\n📊 TIMING VERIFICATION:")
+log(f"   Video duration: {total_duration:.3f}s ({total_frames} frames)")
+log(f"   Audio duration: {actual_audio_duration:.3f}s")
 
-def create_character_track(char_name, char_data, clip_timing, total_duration, position_x, char_y):
-    """Create a single clip for a character with visibility changes."""
-    
-    # Create a base transparent frame
-    from moviepy.editor import ImageClip, CompositeVideoClip
-    
-    # Build segments for this character
-    segments = []
-    for timing in clip_timing:
-        if timing['speaker'] == char_name:
-            clip = (
-                ImageClip(char_data)
-                .set_start(timing['start'])
-                .set_duration(timing['end'] - timing['start'])
-                .set_position((position_x, char_y))
-            )
-            segments.append(clip)
-    
-    return segments
-```
-
-### Phase 4: Nuclear Option - Complete Rewrite of Assembly Logic
-
-If the above doesn't work, the issue might be fundamental to how MoviePy handles the composition. Here's a completely different approach:
-
-```python
-def assemble_v2():
-    """Alternative assembly using frame-by-frame approach."""
-    import subprocess
-    import os
-    from PIL import Image
-    import numpy as np
-    
-    # ... load all data ...
-    
-    # Create frame directory
-    os.makedirs('output/frames', exist_ok=True)
-    
-    # Extract background frames
-    subprocess.run([
-        'ffmpeg', '-y', '-i', 'output/bg_prepared.mp4',
-        '-vf', f'fps={FPS}',
-        'output/frames/bg_%04d.png'
-    ])
-    
-    # For each frame, composite the characters
-    for frame_num in range(int(total_duration * FPS)):
-        time = frame_num / FPS
-        
-        # Load background frame
-        bg = Image.open(f'output/frames/bg_{frame_num+1:04d}.png').convert('RGBA')
-        
-        # Find which character should be visible
-        for timing in clip_timing:
-            if timing['start'] <= time < timing['end']:
-                speaker = timing['speaker']
-                char_data = characters[speaker]
-                char_img = Image.fromarray(char_data)
-                
-                # Calculate position
-                if speaker == 'peter':
-                    x = 30
-                else:
-                    x = CANVAS_W - char_data.shape[1] - 30
-                y = char_y
-                
-                # Paste character
-                bg.paste(char_img, (x, y), char_img)
-        
-        # Save composited frame
-        bg.save(f'output/frames/frame_{frame_num:04d}.png')
-    
-    # Encode final video
-    subprocess.run([
-        'ffmpeg', '-y',
-        '-framerate', str(FPS),
-        '-i', 'output/frames/frame_%04d.png',
-        '-i', 'audio_combined.wav',
-        '-c:v', 'libx264',
-        '-c:a', 'aac',
-        'output/final_reel.mp4'
-    ])
+# Check each clip timing
+log(f"\n📊 CLIP TIMING:")
+for timing in clip_timing:
+    log(f"   [{timing['index']}] {timing['speaker']}: {timing['start']:.3f}-{timing['end']:.3f}s "
+        f"(frames {round(timing['start']*FPS)}-{round(timing['end']*FPS)})")
 ```
 
 ---
 
-## Recommended Fix Order
+## Summary of Changes
 
-1. **First**: Add debug output for Stewie's image RGB content to verify it has visible pixels
-2. **Second**: Try the `set_duration()` instead of `set_end()` fix
-3. **Third**: Verify background frames are actually different
-4. **Fourth**: If all else fails, use the frame-by-frame approach
+| File | Line | Change | Priority |
+|------|------|--------|----------|
+| `assemble_video.py` | 122 | Change `.jpg` to `.png` for intermediate frames | High |
+| `assemble_video.py` | 201 | Change CRF from 23 to 18 for better quality | High |
+| `assemble_video.py` | 181-184 | Don't add silence after last audio clip | Critical |
+| `assemble_video.py` | 130-131 | Use `round()` instead of `int()` for frame calculation | Medium |
+| `assemble_video.py` | 88-89 | Calculate total_frames from actual audio duration | High |
+| `assemble_video.py` | 125-163 | Add caption rendering to frame loop | High |
+| `add_captions.py` | Entire file | Can be removed if captions rendered in assemble | Optional |
 
 ---
 
-## Updated Debug Steps for GitHub Workflow
+## Testing Plan
 
-```yaml
-- name: Debug - Verify Stewie image content
-  run: |
-    python -c "
-    from PIL import Image
-    import numpy as np
-    
-    img = Image.open('assets/stewie.png').convert('RGBA')
-    data = np.array(img)
-    
-    print(f'Stewie size: {img.size}')
-    print(f'Mode: {img.mode}')
-    
-    rgb = data[:,:,:3]
-    alpha = data[:,:,3]
-    
-    visible = alpha > 128
-    print(f'Visible pixels: {np.sum(visible)} / {alpha.size}')
-    
-    if np.sum(visible) > 0:
-        visible_rgb = rgb[visible]
-        print(f'RGB range in visible area:')
-        print(f'  R: {visible_rgb[:,0].min()}-{visible_rgb[:,0].max()}')
-        print(f'  G: {visible_rgb[:,1].min()}-{visible_rgb[:,1].max()}')
-        print(f'  B: {visible_rgb[:,2].min()}-{visible_rgb[:,2].max()}')
-    "
+1. Run workflow with debug logging
+2. Verify:
+   - Background quality is improved (no compression artifacts)
+   - Audio duration matches video duration exactly
+   - Character appears at correct times
+   - Captions sync with audio
+3. Check timing.json for correct values
+4. Play final video and verify sync
 
-- name: Debug - Extract background frames
-  run: |
-    mkdir -p output/bg_debug
-    ffmpeg -y -i output/bg_prepared.mp4 -vf "select=eq(n\,0)" -frames:v 1 output/bg_debug/frame_0001.png
-    ffmpeg -y -i output/bg_prepared.mp4 -vf "select=eq(n\,500)" -frames:v 1 output/bg_debug/frame_0500.png
-    ffmpeg -y -i output/bg_prepared.mp4 -vf "select=eq(n\,1000)" -frames:v 1 output/bg_debug/frame_1000.png
-    echo "Background frames extracted to output/bg_debug/"
+---
 
-- name: Debug - Create Stewie debug image
-  run: |
-    python -c "
-    from PIL import Image
-    import numpy as np
-    
-    # Load Stewie
-    img = Image.open('assets/stewie.png').convert('RGBA')
-    
-    # Scale to 400px height
-    scale = 400 / img.height
-    new_w = int(img.width * scale)
-    img = img.resize((new_w, 400), Image.LANCZOS)
-    
-    # Save for inspection
-    img.save('output/debug_stewie_scaled.png')
-    
-    # Also create on black background for visibility check
-    bg = Image.new('RGBA', (new_w + 20, 420), (0, 0, 0, 255))
-    bg.paste(img, (10, 10), img)
-    bg.save('output/debug_stewie_on_black.png')
-    
-    print('Saved debug images: debug_stewie_scaled.png, debug_stewie_on_black.png')
-    "
+## Mermaid Diagram: Timing Flow
+
+```mermaid
+flowchart TD
+    A[Audio Files] --> B[Get duration via ffprobe]
+    B --> C[Calculate clip_timing with gaps]
+    C --> D[Create audio concat list]
+    D --> E{Add silence after clip?}
+    E -->|Not last clip| F[Add silence.wav]
+    E -->|Last clip| G[Skip silence]
+    F --> H[Concatenate audio]
+    G --> H
+    H --> I[Get actual audio duration]
+    I --> J[Calculate total_frames from audio]
+    J --> K[Export background frames]
+    K --> L[Composite characters on frames]
+    L --> M[Render captions on frames]
+    M --> N[Encode final video with audio]
+    N --> O[Verify durations match]
 ```
-
----
-
-## Summary
-
-The debug log shows the code logic is correct, so the issue must be in:
-1. **How MoviePy renders the Stewie image** (possibly alpha/transparency issue)
-2. **How MoviePy composites the background video** (possibly caching issue)
-
-The fix requires:
-1. Verifying Stewie's image has actual visible RGB content
-2. Trying alternative clip creation methods
-3. Potentially switching to a frame-by-frame rendering approach if MoviePy's CompositeVideoClip has bugs

@@ -112,14 +112,13 @@ def assemble():
         shutil.rmtree(frames_dir)
     os.makedirs(frames_dir, exist_ok=True)
     
-    # Export background video to frames directly (looping and scaling)
-    # Added -qscale:v 2 for highest quality JPEG extraction
     subprocess.run([
-        'ffmpeg', '-y', 
+        'ffmpeg', '-y',
         '-stream_loop', '-1', 
         '-i', 'assets/minecraft_bg.mp4',
         '-t', str(total_duration),
-        '-vf', f'scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,crop={CANVAS_W}:{CANVAS_H},fps={FPS}',
+        '-vf', f'scale=-1:{CANVAS_H},pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:0:black,fps={FPS}',
+        '-an',  # Completely strip any background audio (music, sound effects) from the base video
         '-qscale:v', '2',
         f'{frames_dir}/bg_%05d.jpg'
     ], check=True, capture_output=True)

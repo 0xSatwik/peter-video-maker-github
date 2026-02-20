@@ -1,167 +1,267 @@
-# Implementation Plan: Fix Timing Sync & Background Quality Issues
+# Implementation Plan: Fix Audio/Video Sync & Quality Issues
 
 ## Problem Summary
 
-The previous issues (Stewie not showing, background static) are now **FIXED**. However, two new issues have emerged:
+Based on user feedback, the following issues remain:
 
-1. **Background video quality is poor** - JPG compression artifacts
-2. **Character, caption, and audio timing don't match** - Synchronization issues
+1. **Extra sounds in audio** - TTS adding laughing/useless sounds not in script
+2. **Old background sound bleeding through** - Background video audio mixing with speech
+3. **Background video sizing** - Should loop if shorter, stop if longer (no forced resize)
+4. **Inconsistent speaking speed** - Speed varies between clips
+5. **Pronunciation issues** - "Which is it" spoken as "w hich is it" (broken up)
 
 ---
 
 ## Root Cause Analysis
 
-### Issue 1: Poor Background Quality
+### Issue 1: Extra Sounds (Laughing, etc.) in TTS Audio
 
-**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:122)
-
-```python
-f'{frames_dir}/bg_%05d.jpg'  # JPG with default quality
-```
-
-**Problem**: 
-- Background frames are saved as JPG with **default quality** (75)
-- No quality specified when re-encoding frames
-- Each frame goes through: Original → JPG decode → composite → JPG encode → final video
-- This double compression degrades quality significantly
-
-### Issue 2: Timing Mismatch (Character, Caption, Audio)
-
-**Root Causes**:
-
-#### 2a. Extra Silence at End of Audio
-**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:181-184)
+**Location**: [`scripts/generate_audio.py`](scripts/generate_audio.py:17-28)
 
 ```python
-for audio_path in audio_files_to_concat:
-    f.write(f"file '../{audio_path}'\n")
-    f.write(f"file 'silence.wav'\n")  # <-- Silence added AFTER EVERY clip including LAST
+HIGH_QUALITY = {
+    "max_new_tokens": 2500,
+    "speed": 1.0,
+    "text_temp": 1.5,        # TOO HIGH - causes random outputs
+    "audio_temp": 0.95,      # High - adds variation
+    "audio_repetition_penalty": 1.1,
+    "n_vq": 24,
+}
 ```
 
-**Problem**: Silence is added after the LAST audio clip too, making audio longer than video frames.
+**Root Cause**: 
+- `text_temp: 1.5` is too high, causing the model to generate random tokens (laughing, extra sounds)
+- High temperature values introduce randomness in generation
+- MOSS-TTS may interpret silence or punctuation as opportunities to add sounds
 
-#### 2b. Frame Calculation Rounding
-**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:130-131)
+**Solution**: Lower the temperature values and add text preprocessing
+
+### Issue 2: Background Video Audio Bleeding
+
+**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:117-125)
 
 ```python
-start_f = int(timing['start'] * FPS)  # Truncates, doesn't round
-end_f = int(timing['end'] * FPS)
+subprocess.run([
+    'ffmpeg', '-y', 
+    '-stream_loop', '-1', 
+    '-i', 'assets/minecraft_bg.mp4',  # Has audio!
+    '-t', str(total_duration),
+    '-vf', f'scale=...',  # Only video filter
+    f'{frames_dir}/bg_%05d.jpg'  # Extracts frames only
+], check=True, capture_output=True)
 ```
 
-**Problem**: Integer truncation causes up to 1 frame (41ms) timing drift per clip.
+**Root Cause**: 
+- The background video `minecraft_bg.mp4` has its own audio track
+- While we extract only frames, the audio might be bleeding through somewhere
+- Need to explicitly disable audio from background
 
-#### 2c. Caption Re-encoding Drift
-**Location**: [`scripts/add_captions.py`](scripts/add_captions.py:107-116)
+**Solution**: Add `-an` flag to disable audio from background video
+
+### Issue 3: Background Video Sizing
+
+**Location**: [`scripts/assemble_video.py`](scripts/assemble_video.py:121-122)
 
 ```python
-final = CompositeVideoClip([video] + caption_clips)
-final.write_videofile(temp_output, fps=24, ...)
+'-vf', f'scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,crop={CANVAS_W}:{CANVAS_H},fps={FPS}'
 ```
 
-**Problem**: MoviePy re-encodes the entire video, potentially introducing timing shifts.
+**Root Cause**: 
+- Forces background to exact canvas size with crop
+- User wants: keep original aspect, just scale to fit height
 
-#### 2d. Caption Chunk Timing
-**Location**: [`scripts/add_captions.py`](scripts/add_captions.py:72-76)
+**Solution**: Change to fit within canvas without cropping
+
+### Issue 4: Inconsistent Speaking Speed
+
+**Location**: [`scripts/generate_audio.py`](scripts/generate_audio.py:19)
 
 ```python
-chunk_duration = duration / len(chunks)
-for ci, chunk in enumerate(chunks):
-    chunk_start = start + (ci * chunk_duration)
-    chunk_end = chunk_start + chunk_duration
+"speed": 1.0,  # Same for all, but TTS model varies
 ```
 
-**Problem**: Captions are split evenly across duration, but speech doesn't follow even patterns. Words at the end of a sentence are often spoken faster.
+**Root Cause**: 
+- MOSS-TTS generates different speeds based on text content
+- Short phrases like "Genius." generate faster than long sentences
+- The model doesn't maintain consistent speaking rate
+
+**Solution**: 
+- Post-process audio to normalize speed/duration
+- OR use speed parameter more aggressively
+- OR use audio stretching to match expected duration
+
+### Issue 5: Pronunciation Issues ("w hich is it")
+
+**Root Cause**: 
+- MOSS-TTS tokenization issue with short phrases
+- The comma before "Which" might cause weird break
+- Model is breaking up the word
+
+**Solution**: 
+- Preprocess text to remove problematic patterns
+- Add explicit pronunciation hints
+- Merge short phrases with previous/next to give more context
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Fix Background Quality
+### Phase 1: Fix TTS Generation Parameters
 
-#### 1.1 Use PNG Instead of JPG for Intermediate Frames
-**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:122)
+#### 1.1 Lower Temperature Values
+**File**: [`scripts/generate_audio.py`](scripts/generate_audio.py:17-28)
 
 ```python
 # Change from:
-f'{frames_dir}/bg_%05d.jpg'
+HIGH_QUALITY = {
+    "max_new_tokens": 2500,
+    "speed": 1.0,
+    "text_temp": 1.5,      # Too high
+    "text_top_p": 1.0,
+    "text_top_k": 50,
+    "audio_temp": 0.95,    # Too high
+    "audio_top_p": 0.95,
+    "audio_top_k": 50,
+    "audio_repetition_penalty": 1.1,
+    "n_vq": 24,
+}
 
 # To:
-f'{frames_dir}/bg_%05d.png'
+CONSISTENT_QUALITY = {
+    "max_new_tokens": 2500,
+    "speed": 1.0,
+    "text_temp": 0.8,      # Lower = more deterministic
+    "text_top_p": 0.95,    # Lower = less random
+    "text_top_k": 40,      # Lower = less random
+    "audio_temp": 0.8,     # Lower = more consistent
+    "audio_top_p": 0.9,    # Lower = less random
+    "audio_top_k": 40,     # Lower = less random
+    "audio_repetition_penalty": 1.2,  # Higher = prevent repetition
+    "n_vq": 24,
+}
 ```
 
-#### 1.2 Increase Quality for Final Encoding
-**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:201)
+#### 1.2 Add Text Preprocessing
+**File**: [`scripts/generate_audio.py`](scripts/generate_audio.py:98-113)
+
+```python
+def preprocess_text(text):
+    """Clean text for TTS to prevent pronunciation issues."""
+    import re
+    
+    # Remove multiple spaces
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Add space after punctuation if missing
+    text = re.sub(r'([.,!?])([A-Za-z])', r'\1 \2', text)
+    
+    # For very short phrases, add context
+    # (MOSS-TTS works better with more context)
+    if len(text.split()) <= 3:
+        text = f"... {text} ..."  # Add ellipsis for context
+    
+    return text.strip()
+
+def parse_script(script_path):
+    """Parse script file: SPEAKER|TAGS|LYRICS"""
+    lines = []
+    with open(script_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split('|')
+            if len(parts) == 3:
+                speaker, tags, lyrics = parts
+                # Preprocess text for better TTS
+                lyrics = preprocess_text(lyrics)
+                lines.append({
+                    'speaker': speaker.strip().lower(),
+                    'text': lyrics
+                })
+    return lines
+```
+
+### Phase 2: Fix Background Video Handling
+
+#### 2.1 Disable Audio from Background Video
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:117-125)
 
 ```python
 # Change from:
-'-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+subprocess.run([
+    'ffmpeg', '-y', 
+    '-stream_loop', '-1', 
+    '-i', 'assets/minecraft_bg.mp4',
+    '-t', str(total_duration),
+    '-vf', f'scale=...',
+    f'{frames_dir}/bg_%05d.jpg'
+], check=True, capture_output=True)
 
 # To:
-'-c:v', 'libx264', '-preset', 'slow', '-crf', '18',  # Lower CRF = higher quality
+subprocess.run([
+    'ffmpeg', '-y', 
+    '-stream_loop', '-1', 
+    '-i', 'assets/minecraft_bg.mp4',
+    '-t', str(total_duration),
+    '-an',  # EXPLICITLY DISABLE AUDIO from background
+    '-vf', f'scale=...',
+    f'{frames_dir}/bg_%05d.jpg'
+], check=True, capture_output=True)
 ```
 
-#### 1.3 Alternative: Use High-Quality JPG
-If PNG is too slow, use high-quality JPG:
-
-```python
-# In ffmpeg export (line 122):
-f'{frames_dir}/bg_%05d.jpg'
-
-# Add quality option in ffmpeg:
-'-q:v', '2',  # High quality JPG (1-31, lower is better)
-```
-
-And when saving composited frames (line 157):
-```python
-bg_img.convert("RGB").save(bg_path, quality=95)  # Already at 95, good
-```
-
----
-
-### Phase 2: Fix Timing Synchronization
-
-#### 2.1 Remove Extra Silence at End of Audio
-**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:181-184)
+#### 2.2 Fix Background Sizing (No Crop, Just Fit)
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:121-122)
 
 ```python
 # Change from:
+'-vf', f'scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,crop={CANVAS_W}:{CANVAS_H},fps={FPS}'
+
+# To (fit height, center horizontally):
+'-vf', f'scale=-1:{CANVAS_H},pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:0:black,fps={FPS}'
+
+# This will:
+# 1. Scale to height 1920, keeping aspect ratio
+# 2. Pad with black bars if needed to reach 1080 width
+# 3. No cropping - entire background video is visible
+```
+
+### Phase 3: Fix Audio Timing & Sync
+
+#### 3.1 Remove GAP_SECONDS from Timing Calculation
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:86)
+
+The current code adds `GAP_SECONDS` between clips, but the audio filter approach doesn't need this:
+
+```python
+# Change from:
+current_time += duration + GAP_SECONDS
+
+# To:
+current_time += duration  # No artificial gap - let audio flow naturally
+```
+
+#### 3.2 Use Simpler Audio Concatenation
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:167-201)
+
+The current `adelay` + `amix` approach is complex and can cause issues. Use simple concat:
+
+```python
+# --- Assemble Audio ---
+log("\n🎵 ASSEMBLING AUDIO...")
+
+# Create concat list (no gaps needed)
 with open('output/audio_concat.txt', 'w') as f:
     for audio_path in audio_files_to_concat:
         f.write(f"file '../{audio_path}'\n")
-        f.write(f"file 'silence.wav'\n")  # Adds silence after EVERY clip
 
-# To:
-with open('output/audio_concat.txt', 'w') as f:
-    for i, audio_path in enumerate(audio_files_to_concat):
-        f.write(f"file '../{audio_path}'\n")
-        # Only add silence AFTER clips, not after the last one
-        if i < len(audio_files_to_concat) - 1:
-            f.write(f"file 'silence.wav'\n")
-```
-
-#### 2.2 Fix Frame Calculation Rounding
-**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:130-131)
-
-```python
-# Change from:
-start_f = int(timing['start'] * FPS)
-end_f = int(timing['end'] * FPS)
-
-# To:
-start_f = round(timing['start'] * FPS)
-end_f = round(timing['end'] * FPS)
-```
-
-#### 2.3 Ensure Total Duration Matches Audio Exactly
-**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:88-89)
-
-```python
-# After calculating total_duration, verify it matches the actual audio duration
-# Get actual concatenated audio duration
+# Simple concat - no gaps, no complex filters
 subprocess.run([
-    'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+    'ffmpeg', '-y',
+    '-f', 'concat', '-safe', '0',
     '-i', 'output/audio_concat.txt',
-    '-c', 'copy', 'output/combined_audio.wav'
+    '-c:a', 'pcm_s16le',
+    'output/combined_audio.wav'
 ], check=True, capture_output=True)
 
 # Get actual audio duration
@@ -176,21 +276,67 @@ total_duration = actual_audio_duration
 total_frames = int(total_duration * FPS) + 1
 ```
 
----
+### Phase 4: Normalize Audio Speed/Duration
 
-### Phase 3: Fix Caption Timing
+#### 4.1 Add Audio Normalization Step
+**File**: [`scripts/generate_audio.py`](scripts/generate_audio.py) - Add after generation
 
-#### 3.1 Render Captions Directly on Frames (Same as Characters)
-**Best Solution**: Instead of using MoviePy for captions, render them directly on frames during the frame-by-frame compositing phase.
+```python
+def normalize_audio_speed(input_path, target_duration=None):
+    """
+    Normalize audio to consistent speed.
+    If target_duration is provided, stretch/shrink to match.
+    """
+    import subprocess
+    import json
+    
+    # Get current duration
+    probe = subprocess.run(
+        ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', input_path],
+        capture_output=True, text=True
+    )
+    current_duration = float(json.loads(probe.stdout)['format']['duration'])
+    
+    if target_duration is None:
+        # Just normalize volume and remove silence
+        output_path = input_path.replace('.wav', '_normalized.wav')
+        subprocess.run([
+            'ffmpeg', '-y', '-i', input_path,
+            '-af', 'silenceremove=stop_periods=1:stop_duration=0.3:stop_threshold=-40dB,loudnorm=I=-14:TP=-1.5:LRA=11',
+            output_path
+        ], check=True, capture_output=True)
+        return output_path
+    
+    # Stretch/shrink to target duration
+    tempo = current_duration / target_duration
+    output_path = input_path.replace('.wav', '_normalized.wav')
+    
+    # atempo filter limits: 0.5 to 2.0, chain if needed
+    if tempo > 2.0:
+        tempo = 2.0
+    elif tempo < 0.5:
+        tempo = 0.5
+    
+    subprocess.run([
+        'ffmpeg', '-y', '-i', input_path,
+        '-af', f'atempo={tempo},loudnorm=I=-14:TP=-1.5:LRA=11',
+        output_path
+    ], check=True, capture_output=True)
+    
+    return output_path
+```
 
-**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:125-163)
+### Phase 5: Fix Caption Timing
+
+#### 5.1 Render Captions on Frames (Eliminate MoviePy Timing Drift)
+**File**: [`scripts/assemble_video.py`](scripts/assemble_video.py:138-163)
 
 Add caption rendering to the frame compositing loop:
 
 ```python
 from PIL import Image, ImageDraw, ImageFont
 
-# Load font
+# Load font for captions
 try:
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
 except:
@@ -198,12 +344,12 @@ except:
 
 # In the frame loop:
 for f_idx in range(total_frames):
-    bg_path = f"{frames_dir}/bg_{f_idx+1:05d}.png"
+    bg_path = f"{frames_dir}/bg_{f_idx+1:05d}.jpg"
     if not os.path.exists(bg_path):
         break
-        
-    speaker = frame_speakers[f_idx]
+    
     current_time = f_idx / FPS
+    speaker = frame_speakers[f_idx]
     
     # Load frame
     bg_img = Image.open(bg_path).convert("RGBA")
@@ -217,10 +363,9 @@ for f_idx in range(total_frames):
             cx = CANVAS_W - char_img.width - 30
         bg_img.paste(char_img, (cx, char_y), char_img)
     
-    # Find and render caption
+    # Render caption
     for timing in clip_timing:
         if timing['start'] <= current_time < timing['end']:
-            # Calculate which chunk to show
             text = timing['text']
             words = text.split()
             chunk_size = 7
@@ -233,23 +378,19 @@ for f_idx in range(total_frames):
                 chunk_idx = min(int(time_in_clip / chunk_duration), len(chunks) - 1)
                 chunk = chunks[chunk_idx]
                 
-                # Render text
+                # Draw caption
                 draw = ImageDraw.Draw(bg_img)
-                
-                # Get text bounding box
                 bbox = draw.textbbox((0, 0), chunk, font=font)
                 text_width = bbox[2] - bbox[0]
                 text_x = (CANVAS_W - text_width) // 2
-                text_y = 1050  # Same as caption_y in add_captions.py
+                text_y = 1050
                 
-                # Draw with stroke (outline)
-                stroke_width = 3
-                # Draw stroke by drawing text multiple times offset
-                for ox in range(-stroke_width, stroke_width + 1):
-                    for oy in range(-stroke_width, stroke_width + 1):
+                # Draw stroke
+                for ox in range(-3, 4):
+                    for oy in range(-3, 4):
                         if ox != 0 or oy != 0:
                             draw.text((text_x + ox, text_y + oy), chunk, font=font, fill='black')
-                # Draw main text
+                # Draw text
                 draw.text((text_x, text_y), chunk, font=font, fill='yellow')
             break
     
@@ -257,86 +398,32 @@ for f_idx in range(total_frames):
     bg_img.convert("RGB").save(bg_path, quality=95)
 ```
 
-#### 3.2 Alternative: Keep MoviePy Captions But Fix Timing
-If keeping MoviePy for captions, ensure timing is preserved:
-
-```python
-# In add_captions.py, use copy codec for video to avoid re-encoding
-final.write_videofile(
-    temp_output,
-    fps=24,
-    codec='libx264',
-    audio_codec='copy',  # Copy audio without re-encoding
-    preset='medium',
-    threads=2
-)
-```
-
----
-
-### Phase 4: Add Timing Verification Logging
-
-Add debug output to verify timing alignment:
-
-```python
-# After assembling audio
-log(f"\n📊 TIMING VERIFICATION:")
-log(f"   Video duration: {total_duration:.3f}s ({total_frames} frames)")
-log(f"   Audio duration: {actual_audio_duration:.3f}s")
-
-# Check each clip timing
-log(f"\n📊 CLIP TIMING:")
-for timing in clip_timing:
-    log(f"   [{timing['index']}] {timing['speaker']}: {timing['start']:.3f}-{timing['end']:.3f}s "
-        f"(frames {round(timing['start']*FPS)}-{round(timing['end']*FPS)})")
-```
-
 ---
 
 ## Summary of Changes
 
-| File | Line | Change | Priority |
-|------|------|--------|----------|
-| `assemble_video.py` | 122 | Change `.jpg` to `.png` for intermediate frames | High |
-| `assemble_video.py` | 201 | Change CRF from 23 to 18 for better quality | High |
-| `assemble_video.py` | 181-184 | Don't add silence after last audio clip | Critical |
-| `assemble_video.py` | 130-131 | Use `round()` instead of `int()` for frame calculation | Medium |
-| `assemble_video.py` | 88-89 | Calculate total_frames from actual audio duration | High |
-| `assemble_video.py` | 125-163 | Add caption rendering to frame loop | High |
-| `add_captions.py` | Entire file | Can be removed if captions rendered in assemble | Optional |
+| File | Change | Priority |
+|------|--------|----------|
+| `generate_audio.py` | Lower temperature values (text_temp: 1.5→0.8, audio_temp: 0.95→0.8) | Critical |
+| `generate_audio.py` | Add text preprocessing function | High |
+| `assemble_video.py` | Add `-an` flag to disable background audio | Critical |
+| `assemble_video.py` | Change background scaling to fit without crop | Medium |
+| `assemble_video.py` | Remove GAP_SECONDS from timing | High |
+| `assemble_video.py` | Simplify audio concatenation | High |
+| `assemble_video.py` | Add caption rendering to frame loop | High |
+| `add_captions.py` | Can be removed (captions now in assemble) | Optional |
 
 ---
 
-## Testing Plan
+## Testing Checklist
 
-1. Run workflow with debug logging
-2. Verify:
-   - Background quality is improved (no compression artifacts)
-   - Audio duration matches video duration exactly
-   - Character appears at correct times
-   - Captions sync with audio
-3. Check timing.json for correct values
-4. Play final video and verify sync
+After implementing fixes, verify:
 
----
-
-## Mermaid Diagram: Timing Flow
-
-```mermaid
-flowchart TD
-    A[Audio Files] --> B[Get duration via ffprobe]
-    B --> C[Calculate clip_timing with gaps]
-    C --> D[Create audio concat list]
-    D --> E{Add silence after clip?}
-    E -->|Not last clip| F[Add silence.wav]
-    E -->|Last clip| G[Skip silence]
-    F --> H[Concatenate audio]
-    G --> H
-    H --> I[Get actual audio duration]
-    I --> J[Calculate total_frames from audio]
-    J --> K[Export background frames]
-    K --> L[Composite characters on frames]
-    L --> M[Render captions on frames]
-    M --> N[Encode final video with audio]
-    N --> O[Verify durations match]
-```
+- [ ] No extra sounds (laughing, etc.) in generated audio
+- [ ] No background audio bleeding through
+- [ ] Background video loops properly if shorter than speech
+- [ ] Background video stops when speech ends
+- [ ] Speaking speed is consistent across all clips
+- [ ] No pronunciation issues (words not broken up)
+- [ ] Captions sync perfectly with audio
+- [ ] Character appears at correct times

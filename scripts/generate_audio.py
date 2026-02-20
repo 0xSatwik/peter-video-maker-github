@@ -13,17 +13,17 @@ COLAB_URL = os.environ.get('COLAB_URL', '')
 PARALLEL_WORKERS = 5
 MAX_RETRIES = 2
 
-# High Quality (24 RVQ) preset — matches notebook
+# High Quality (24 RVQ) preset — strictly tuned to prevent hallucination (laughing/stuttering)
 HIGH_QUALITY = {
-    "max_new_tokens": 2500,
-    "speed": 1.0,
-    "text_temp": 1.5,
-    "text_top_p": 1.0,
-    "text_top_k": 50,
-    "audio_temp": 0.95,
-    "audio_top_p": 0.95,
-    "audio_top_k": 50,
-    "audio_repetition_penalty": 1.1,
+    "max_new_tokens": 2000,
+    "speed": 1.1,                 # 1.1 is slightly faster and forces a tighter, consistent cadence
+    "text_temp": 0.7,             # Lowered from 1.5 -> stops the model from creatively "laughing"
+    "text_top_p": 0.9,
+    "text_top_k": 40,
+    "audio_temp": 0.8,            # Lowered from 0.95 -> stabilizes the acoustic output
+    "audio_top_p": 0.9,
+    "audio_top_k": 40,
+    "audio_repetition_penalty": 1.3, # Increased from 1.1 -> strictly forbids repeating "which is it"
     "n_vq": 24,
 }
 
@@ -95,6 +95,23 @@ def generate_one(client, text, speaker, output_path, index, total):
     return False
 
 
+def preprocess_text(text):
+    """Clean text for TTS to prevent pronunciation issues."""
+    import re
+    
+    # Remove multiple spaces
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Add space after punctuation if missing
+    text = re.sub(r'([.,!?])([A-Za-z])', r'\1 \2', text)
+    
+    # For very short phrases, add context padding (helps MOSS-TTS enunciate)
+    if len(text.split()) <= 3:
+        text = f"... {text} ..."
+        
+    return text.strip()
+
+
 def parse_script(script_path):
     """Parse script file: SPEAKER|TAGS|LYRICS"""
     lines = []
@@ -105,10 +122,15 @@ def parse_script(script_path):
                 continue
             parts = line.split('|')
             if len(parts) == 3:
-                speaker, tags, lyrics = parts
+                speaker = speaker.strip().lower()
+                text = preprocess_text(parts[2].strip())
+                
+                if not text.endswith(('.', '!', '?', '"', "'")):
+                    text += '.'
+                    
                 lines.append({
-                    'speaker': speaker.strip().lower(),
-                    'text': lyrics.strip()
+                    'speaker': speaker,
+                    'text': text
                 })
     return lines
 

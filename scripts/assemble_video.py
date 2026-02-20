@@ -1,26 +1,20 @@
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, TextClip,
-    CompositeVideoClip, CompositeAudioClip, ColorClip,
+    CompositeVideoClip, ColorClip,
     concatenate_audioclips, concatenate_videoclips
 )
 from PIL import Image
 import numpy as np
 import os
 import json
+import glob
 
 # === CONSTANTS ===
 CANVAS_W, CANVAS_H = 1080, 1920  # Instagram Reel (9:16)
-CHAR_HEIGHT = 500   # Character image height
-CHAR_MARGIN = 40    # Margin from left edge
+CHAR_HEIGHT = 500
 FPS = 24
 
-# Character colors for name badges
-CHAR_COLORS = {
-    'peter': '#2E86AB',
-    'stewie': '#A23B72',
-}
-
-# Fonts to try in order
+# Fonts to try
 FONT_CANDIDATES = [
     'DejaVu-Sans-Bold',
     'DejaVu-Sans',
@@ -45,22 +39,6 @@ def find_working_font():
     return None
 
 
-def loop_audio(audio_clip, target_duration):
-    """Loop audio to fill target_duration (moviepy 1.0.3 safe)."""
-    if audio_clip.duration >= target_duration:
-        return audio_clip.subclip(0, target_duration)
-    loops = int(target_duration / audio_clip.duration) + 1
-    return concatenate_audioclips([audio_clip] * loops).subclip(0, target_duration)
-
-
-def loop_video(video_clip, target_duration):
-    """Loop video to fill target_duration (moviepy 1.0.3 safe)."""
-    if video_clip.duration >= target_duration:
-        return video_clip.subclip(0, target_duration)
-    loops = int(target_duration / video_clip.duration) + 1
-    return concatenate_videoclips([video_clip] * loops).subclip(0, target_duration)
-
-
 def load_character(name):
     """Load character image with background removal."""
     for ext in ['png', 'jpg', 'jpeg']:
@@ -79,7 +57,6 @@ def load_character(name):
                          (data[:, :, 2] > 215)
             data[black_mask | white_mask, 3] = 0
 
-            # Resize to target height
             scale = CHAR_HEIGHT / img.height
             new_w = int(img.width * scale)
             img_resized = Image.fromarray(data).resize(
@@ -94,7 +71,6 @@ def load_character(name):
 def assemble():
     print("🎬 Starting professional video assembly...")
 
-    # --- Find working font ---
     font = find_working_font()
 
     # --- Load metadata ---
@@ -110,11 +86,11 @@ def assemble():
 
     bg_raw = VideoFileClip('assets/minecraft_bg.mp4')
 
-    # Resize background to FULL SCREEN (1080x1920 cover)
+    # Resize to cover full screen (1080x1920)
     bg_scale = max(CANVAS_W / bg_raw.w, CANVAS_H / bg_raw.h)
     bg = bg_raw.resize(bg_scale)
 
-    # Center crop to exactly 1080x1920
+    # Center crop to 1080x1920
     bw, bh = bg.size
     x1 = max(0, int((bw - CANVAS_W) / 2))
     y1 = max(0, int((bh - CANVAS_H) / 2))
@@ -128,7 +104,7 @@ def assemble():
             characters[name] = char_img
             print(f"✅ Loaded character: {name} ({char_img.shape[1]}x{char_img.shape[0]})")
 
-    # --- Load voice audio clips and calculate timing ---
+    # --- Load voice audio clips (supports both .wav and .mp3) ---
     voice_clips = []
     clip_timing = []
     current_time = 0.0
@@ -155,108 +131,54 @@ def assemble():
 
     print(f"🎵 Loaded {len(voice_clips)} voice clips, total duration: {current_time:.1f}s")
 
-    # Concatenate voice audio
     voice_audio = concatenate_audioclips(voice_clips)
     total_duration = voice_audio.duration
-    final_audio = voice_audio
 
-    # --- Loop background video to match total duration ---
-    bg = loop_video(bg, total_duration)
+    # --- Loop background video using fl_time (keeps it animated!) ---
+    bg_duration = bg.duration
+    bg_looped = bg.fl_time(lambda t: t % bg_duration, apply_to=['mask', 'audio'])
+    bg_looped = bg_looped.set_duration(total_duration)
 
-    # --- Build the video layers ---
+    # --- Build layers ---
     print("🎞️ Building layers...")
 
-    # Layer 1: Full-screen background video
-    layers = [bg]
+    layers = [bg_looped]
 
-    # Layer 2: Semi-transparent dark gradient at the bottom for readability
-    # (so text/characters are visible over the background)
-    bottom_overlay = (
-        ColorClip(size=(CANVAS_W, 700), color=(0, 0, 0))
-        .set_opacity(0.55)
-        .set_duration(total_duration)
-        .set_position((0, CANVAS_H - 700))
-    )
-    layers.append(bottom_overlay)
+    # Character positions: Peter on LEFT, Stewie on RIGHT
+    char_y = CANVAS_H - CHAR_HEIGHT - 100  # 100px from bottom
 
-    # Layer 3: Character images at bottom-left (overlaid on background)
-    char_y = CANVAS_H - CHAR_HEIGHT - 150  # 150px from bottom
+    # Peter LEFT position
+    peter_x = 30
+    # Stewie RIGHT position
+    stewie_x = CANVAS_W - 30  # will subtract width after loading
+
+    # Place characters — show the SPEAKING character
     for timing in clip_timing:
         speaker = timing['speaker']
         if speaker in characters:
             char_data = characters[speaker]
+            char_w = char_data.shape[1]
+
+            # Peter on left, Stewie on right
+            if speaker == 'peter':
+                cx = peter_x
+            else:
+                cx = CANVAS_W - char_w - 30  # right-aligned
+
             char_clip = (
                 ImageClip(char_data)
                 .set_start(timing['start'])
                 .set_end(timing['end'])
-                .set_position((CHAR_MARGIN, char_y))
-                .fadein(0.2)
-                .fadeout(0.2)
+                .set_position((cx, char_y))
+                .fadein(0.15)
+                .fadeout(0.15)
             )
             layers.append(char_clip)
-
-    # Layer 4: Speaker name badges (above character)
-    for timing in clip_timing:
-        speaker = timing['speaker']
-        badge_color = CHAR_COLORS.get(speaker, '#555555')
-        try:
-            kwargs = {
-                'fontsize': 34,
-                'color': 'white',
-                'bg_color': badge_color,
-                'method': 'label',
-            }
-            if font:
-                kwargs['font'] = font
-
-            name_clip = (
-                TextClip(f"  {speaker.upper()}  ", **kwargs)
-                .set_start(timing['start'])
-                .set_end(timing['end'])
-                .set_position((CHAR_MARGIN + 10, char_y - 50))
-                .fadein(0.2)
-                .fadeout(0.2)
-            )
-            layers.append(name_clip)
-        except Exception as e:
-            print(f"⚠️ Could not create name badge for {speaker}: {e}")
-
-    # Layer 5: Dialogue text on the right side (next to character)
-    text_x = 420  # Right of the character
-    text_w = CANVAS_W - text_x - 40
-    text_y = CANVAS_H - 550  # Vertically centered in the overlay area
-
-    for timing in clip_timing:
-        text = timing['text']
-        try:
-            kwargs = {
-                'fontsize': 38,
-                'color': 'white',
-                'stroke_color': 'black',
-                'stroke_width': 2,
-                'method': 'caption',
-                'size': (text_w, None),
-                'align': 'West',
-            }
-            if font:
-                kwargs['font'] = font
-
-            txt_clip = (
-                TextClip(text, **kwargs)
-                .set_start(timing['start'])
-                .set_end(timing['end'])
-                .set_position((text_x, text_y))
-                .fadein(0.3)
-                .fadeout(0.2)
-            )
-            layers.append(txt_clip)
-        except Exception as e:
-            print(f"⚠️ Could not create text clip: {e}")
 
     # --- Compose final video ---
     print("🎞️ Compositing all layers...")
     final_video = CompositeVideoClip(layers, size=(CANVAS_W, CANVAS_H))
-    final_video = final_video.set_audio(final_audio)
+    final_video = final_video.set_audio(voice_audio)
     final_video = final_video.set_duration(total_duration)
 
     os.makedirs('output', exist_ok=True)

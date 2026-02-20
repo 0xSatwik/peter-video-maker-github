@@ -7,12 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 MODAL_ENDPOINT = os.environ.get('MODAL_ENDPOINT')
 MAX_RETRIES = 3
-RETRY_DELAY = 5  # seconds (doubles each retry)
-PARALLEL_WORKERS = 3  # concurrent requests (Modal auto-scales containers)
+RETRY_DELAY = 5
+PARALLEL_WORKERS = 3
 
 
-def generate_audio(lyrics, tags, duration, output_path):
-    """Generate audio via HeartMuLa API with retry logic"""
+def generate_audio(text, speaker, output_path):
+    """Generate speech via MOSS-TTS API with retry logic"""
 
     if not MODAL_ENDPOINT:
         print(f"⚠️ Skipping {output_path} - No Modal endpoint")
@@ -23,16 +23,15 @@ def generate_audio(lyrics, tags, duration, output_path):
         print(f"⏭️ Skipping {output_path} - Already exists")
         return True
 
-    print(f"🎵 Generating: {tags} → {output_path}")
+    print(f"🎤 [{speaker.upper()}]: {text[:60]}...")
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = requests.post(
                 MODAL_ENDPOINT,
                 json={
-                    "lyrics": lyrics,
-                    "tags": tags,
-                    "duration": duration
+                    "text": text,
+                    "speaker": speaker,
                 },
                 timeout=600
             )
@@ -53,10 +52,10 @@ def generate_audio(lyrics, tags, duration, output_path):
         except (requests.exceptions.ConnectionError,
                 requests.exceptions.Timeout,
                 requests.exceptions.ReadTimeout) as e:
-            print(f"⚠️ Attempt {attempt}/{MAX_RETRIES} connection error: {type(e).__name__}")
+            print(f"⚠️ Attempt {attempt}/{MAX_RETRIES} error: {type(e).__name__}")
 
         except Exception as e:
-            print(f"❌ Attempt {attempt}/{MAX_RETRIES} unexpected error: {e}")
+            print(f"❌ Attempt {attempt}/{MAX_RETRIES} error: {e}")
 
         if attempt < MAX_RETRIES:
             wait = RETRY_DELAY * (2 ** (attempt - 1))
@@ -68,7 +67,7 @@ def generate_audio(lyrics, tags, duration, output_path):
 
 
 def parse_script(script_path):
-    """Parse script file into lines"""
+    """Parse script file: SPEAKER|TAGS|LYRICS"""
     lines = []
     with open(script_path, 'r', encoding='utf-8') as f:
         for line in f:
@@ -80,8 +79,7 @@ def parse_script(script_path):
                 speaker, tags, lyrics = parts
                 lines.append({
                     'speaker': speaker.strip().lower(),
-                    'tags': tags.strip(),
-                    'lyrics': lyrics.strip()
+                    'text': lyrics.strip()
                 })
     return lines
 
@@ -89,9 +87,8 @@ def parse_script(script_path):
 def generate_one(task):
     """Worker function for parallel generation."""
     return generate_audio(
-        lyrics=task['lyrics'],
-        tags=task['tags'],
-        duration=task['duration'],
+        text=task['text'],
+        speaker=task['speaker'],
         output_path=task['output_path']
     )
 
@@ -106,15 +103,12 @@ def main():
     # Build task list
     tasks = []
     for i, line in enumerate(lines):
-        output_path = f"audio/{line['speaker']}_{i:03d}.mp3"
-        duration = max(5, len(line['lyrics']) // 15)
+        output_path = f"audio/{line['speaker']}_{i:03d}.wav"
         tasks.append({
-            'lyrics': line['lyrics'],
-            'tags': line['tags'],
-            'duration': duration,
+            'text': line['text'],
+            'speaker': line['speaker'],
             'output_path': output_path
         })
-
 
     print(f"🚀 Generating {len(tasks)} audio files with {PARALLEL_WORKERS} parallel workers...")
     start_time = time.time()
@@ -122,7 +116,6 @@ def main():
     success_count = 0
     fail_count = 0
 
-    # Run in parallel
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
         future_to_task = {executor.submit(generate_one, task): task for task in tasks}
 
@@ -140,19 +133,19 @@ def main():
 
     elapsed = time.time() - start_time
     print(f"\n📊 Results: {success_count} succeeded, {fail_count} failed")
-    print(f"⏱️ Total time: {elapsed/60:.1f} minutes (was ~{len(tasks)}min sequential)")
+    print(f"⏱️ Total time: {elapsed/60:.1f} minutes")
 
     if fail_count > 0:
         print("⚠️ Some audio files failed. Pipeline will continue with available files.")
 
-    # Save timing metadata for video assembly
+    # Save metadata for video assembly
     timing = []
     for i, line in enumerate(lines):
-        audio_path = f"audio/{line['speaker']}_{i:03d}.mp3"
+        audio_path = f"audio/{line['speaker']}_{i:03d}.wav"
         timing.append({
             'index': i,
             'speaker': line['speaker'],
-            'text': line['lyrics'],
+            'text': line['text'],
             'audio_file': audio_path,
             'exists': os.path.exists(audio_path)
         })

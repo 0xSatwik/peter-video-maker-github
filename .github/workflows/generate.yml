@@ -59,7 +59,7 @@ jobs:
         run: |
           echo "📊 Audio files generated:"
           ls -la audio/
-          echo "Total files: $(ls audio/*.mp3 2>/dev/null | wc -l)"
+          echo "Total WAV files: $(ls audio/*.wav 2>/dev/null | wc -l)"
           cat audio/metadata.json || echo "No metadata file"
       
       - name: Assemble Video (with characters + layout)

@@ -163,16 +163,7 @@ def assemble():
     voice_audio = concatenate_audioclips(voice_clips)
     total_duration = voice_audio.duration
 
-    # --- Add background music ---
-    bg_music_path = 'audio/background_music.mp3'
-    if os.path.exists(bg_music_path):
-        music = AudioFileClip(bg_music_path).volumex(0.15)
-        music = loop_audio(music, total_duration)
-        final_audio = CompositeAudioClip([voice_audio, music])
-        print("🎶 Background music added")
-    else:
-        final_audio = voice_audio
-        print("⚠️ No background music found, using voice only")
+    final_audio = voice_audio
 
     # --- Loop background video to match total duration ---
     bg = loop_video(bg, total_duration)

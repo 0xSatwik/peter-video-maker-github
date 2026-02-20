@@ -115,13 +115,6 @@ def main():
             'output_path': output_path
         })
 
-    # Add background music task
-    tasks.append({
-        'lyrics': 'Instrumental',
-        'tags': 'upbeat, tech, background, calm, lofi',
-        'duration': 60,
-        'output_path': 'audio/background_music.mp3'
-    })
 
     print(f"🚀 Generating {len(tasks)} audio files with {PARALLEL_WORKERS} parallel workers...")
     start_time = time.time()

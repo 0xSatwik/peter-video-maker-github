@@ -12,7 +12,7 @@ volume = modal.Volume.from_name("moss-tts-models", create_if_missing=True)
 # Voice samples are baked into the image via add_local_file
 image = (
     modal.Image.from_registry(
-        "pytorch/pytorch:2.1.2-cuda12.1-cudnn8-devel",
+        "pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel",
         add_python="3.10"
     )
     .env({"DEBIAN_FRONTEND": "noninteractive", "TZ": "Etc/UTC"})
@@ -76,12 +76,14 @@ class MossTTSService:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = torch.float16 if self.device == "cuda" else torch.float32
 
-        # Memory optimizations from notebook
+        # Memory optimizations (best-effort, not all available in every PyTorch version)
         if self.device == "cuda":
-            torch.backends.cuda.enable_cudnn_sdp(True)
-            torch.backends.cuda.enable_flash_sdp(False)
-            torch.backends.cuda.enable_mem_efficient_sdp(True)
-            torch.backends.cuda.enable_math_sdp(True)
+            try:
+                torch.backends.cuda.enable_flash_sdp(True)
+                torch.backends.cuda.enable_mem_efficient_sdp(True)
+                torch.backends.cuda.enable_math_sdp(True)
+            except AttributeError:
+                print("⚠️ Some SDP optimizations not available, skipping")
 
         print("🔄 Loading MOSS-TTS 1.7B...")
         model_cache = "/models/moss-tts-cache"

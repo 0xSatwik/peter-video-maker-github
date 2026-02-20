@@ -101,6 +101,21 @@ jobs:
           path: output/final_reel.mp4
           retention-days: 30
 
+      - name: Clean up audio files with invalid characters
+        run: |
+          # Remove any files with colons or other invalid characters in names
+          # GitHub Actions artifacts don't support these characters
+          find audio/ -type f ! -name '*.wav' ! -name 'metadata.json' -delete 2>/dev/null || true
+          find audio/ -name '*:*' -delete 2>/dev/null || true
+          find audio/ -name '*"*' -delete 2>/dev/null || true
+          find audio/ -name '*<*' -delete 2>/dev/null || true
+          find audio/ -name '*>*' -delete 2>/dev/null || true
+          find audio/ -name '*|*' -delete 2>/dev/null || true
+          find audio/ -name '*?*' -delete 2>/dev/null || true
+          echo "Cleaned up files with invalid characters"
+          echo "Remaining files:"
+          ls -la audio/
+
       - name: Upload audio files
         uses: actions/upload-artifact@v4
         with:

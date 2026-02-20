@@ -1,68 +1,97 @@
+"""
+Generate voice audio via Colab Gradio API (MOSS-TTS 1.7B).
+Connects to a user-provided Gradio URL from Google Colab.
+"""
 import os
-import requests
-import base64
-import time
 import json
+import time
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from gradio_client import Client, handle_file
 
-MODAL_ENDPOINT = os.environ.get('MODAL_ENDPOINT')
-MAX_RETRIES = 3
-RETRY_DELAY = 5
-PARALLEL_WORKERS = 3
+COLAB_URL = os.environ.get('COLAB_URL', '')
+PARALLEL_WORKERS = 5
+MAX_RETRIES = 2
+
+# High Quality (24 RVQ) preset — matches notebook
+HIGH_QUALITY = {
+    "max_new_tokens": 2500,
+    "speed": 1.0,
+    "text_temp": 1.5,
+    "text_top_p": 1.0,
+    "text_top_k": 50,
+    "audio_temp": 0.95,
+    "audio_top_p": 0.95,
+    "audio_top_k": 50,
+    "audio_repetition_penalty": 1.1,
+    "n_vq": 24,
+}
+
+# Voice reference files
+VOICE_REFS = {
+    "peter": "assets/peter-vocie.mp3",
+    "stewie": "assets/Stewies-voice.mp3",
+}
 
 
-def generate_audio(text, speaker, output_path):
-    """Generate speech via MOSS-TTS API with retry logic"""
-
-    if not MODAL_ENDPOINT:
-        print(f"⚠️ Skipping {output_path} - No Modal endpoint")
-        return False
+def generate_one(client, text, speaker, output_path, index, total):
+    """Generate a single voice clip via Gradio API."""
 
     # Skip if already generated (resume support)
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-        print(f"⏭️ Skipping {output_path} - Already exists")
+        print(f"  ⏭️  [{index+1}/{total}] SKIP (already exists): {output_path}")
         return True
 
-    print(f"🎤 [{speaker.upper()}]: {text[:60]}...")
+    voice_ref = VOICE_REFS.get(speaker)
+    if not voice_ref or not os.path.exists(voice_ref):
+        print(f"  ⚠️  [{index+1}/{total}] No voice ref for '{speaker}', using default voice")
+        voice_ref = None
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = requests.post(
-                MODAL_ENDPOINT,
-                json={
-                    "text": text,
-                    "speaker": speaker,
-                },
-                timeout=600
+            start = time.time()
+            print(f"  🎤  [{index+1}/{total}] Generating ({speaker.upper()}): \"{text[:50]}...\"")
+
+            # Call the Gradio generate_speech function
+            result = client.predict(
+                text,                                           # text input
+                handle_file(voice_ref) if voice_ref else None,  # reference audio
+                HIGH_QUALITY["max_new_tokens"],
+                HIGH_QUALITY["speed"],
+                HIGH_QUALITY["text_temp"],
+                HIGH_QUALITY["text_top_p"],
+                HIGH_QUALITY["text_top_k"],
+                HIGH_QUALITY["audio_temp"],
+                HIGH_QUALITY["audio_top_p"],
+                HIGH_QUALITY["audio_top_k"],
+                HIGH_QUALITY["audio_repetition_penalty"],
+                HIGH_QUALITY["n_vq"],
+                api_name="/generate_speech"
             )
 
-            if response.status_code == 200:
-                data = response.json()
-                audio_bytes = base64.b64decode(data['audio_base64'])
+            elapsed = time.time() - start
 
+            # result is (audio_path, status_text)
+            audio_path = result[0] if isinstance(result, (list, tuple)) else result
+
+            if audio_path and os.path.exists(audio_path):
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                with open(output_path, 'wb') as f:
-                    f.write(audio_bytes)
-
-                print(f"✅ Saved: {output_path}")
+                shutil.copy2(audio_path, output_path)
+                size_kb = os.path.getsize(output_path) / 1024
+                print(f"  ✅  [{index+1}/{total}] DONE in {elapsed:.1f}s — {size_kb:.0f}KB — {output_path}")
                 return True
             else:
-                print(f"❌ Attempt {attempt}/{MAX_RETRIES} failed: HTTP {response.status_code}")
-
-        except (requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout,
-                requests.exceptions.ReadTimeout) as e:
-            print(f"⚠️ Attempt {attempt}/{MAX_RETRIES} error: {type(e).__name__}")
+                print(f"  ❌  [{index+1}/{total}] Attempt {attempt}: No audio returned")
 
         except Exception as e:
-            print(f"❌ Attempt {attempt}/{MAX_RETRIES} error: {e}")
+            elapsed = time.time() - start
+            print(f"  ❌  [{index+1}/{total}] Attempt {attempt} failed after {elapsed:.1f}s: {e}")
 
         if attempt < MAX_RETRIES:
-            wait = RETRY_DELAY * (2 ** (attempt - 1))
-            print(f"⏳ Retrying in {wait}s...")
-            time.sleep(wait)
+            print(f"  ⏳  [{index+1}/{total}] Retrying in 3s...")
+            time.sleep(3)
 
-    print(f"💀 Failed after {MAX_RETRIES} attempts: {output_path}")
+    print(f"  💀  [{index+1}/{total}] FAILED after {MAX_RETRIES} attempts: {output_path}")
     return False
 
 
@@ -84,65 +113,100 @@ def parse_script(script_path):
     return lines
 
 
-def generate_one(task):
-    """Worker function for parallel generation."""
-    return generate_audio(
-        text=task['text'],
-        speaker=task['speaker'],
-        output_path=task['output_path']
-    )
-
-
 def main():
+    if not COLAB_URL:
+        print("❌ ERROR: COLAB_URL environment variable not set!")
+        print("   Please provide your Colab Gradio URL when running the workflow.")
+        exit(1)
+
+    print("=" * 60)
+    print("🎙️  MOSS-TTS Voice Generation via Google Colab")
+    print("=" * 60)
+    print(f"📡 Colab URL: {COLAB_URL}")
+    print(f"👷 Parallel workers: {PARALLEL_WORKERS}")
+    print(f"🎛️  Quality: High (24 RVQ)")
+    print()
+
+    # Connect to Colab Gradio
+    print("🔌 Connecting to Colab Gradio API...")
+    try:
+        client = Client(COLAB_URL)
+        print("✅ Connected!\n")
+    except Exception as e:
+        print(f"❌ Failed to connect: {e}")
+        print("   Make sure the Colab notebook is running and the Gradio URL is correct.")
+        exit(1)
+
+    # Parse script
     script_path = os.environ.get('SCRIPT_PATH', 'config/scripts/EPISODE_01.txt')
     lines = parse_script(script_path)
+    print(f"📄 Script: {script_path}")
+    print(f"📝 Dialogue lines: {len(lines)}")
 
-    print(f"📄 Loaded {len(lines)} dialogue lines from {script_path}")
+    # Check voice references
+    for name, path in VOICE_REFS.items():
+        exists = "✅" if os.path.exists(path) else "❌"
+        print(f"🎙️  {name} voice ref: {exists} {path}")
+    print()
+
     os.makedirs('audio', exist_ok=True)
 
-    # Build task list
+    # Build tasks
     tasks = []
     for i, line in enumerate(lines):
         output_path = f"audio/{line['speaker']}_{i:03d}.wav"
         tasks.append({
             'text': line['text'],
             'speaker': line['speaker'],
-            'output_path': output_path
+            'output_path': output_path,
+            'index': i,
         })
 
-    print(f"🚀 Generating {len(tasks)} audio files with {PARALLEL_WORKERS} parallel workers...")
-    start_time = time.time()
-
-    success_count = 0
-    fail_count = 0
+    # Generate with parallel workers
+    print(f"🚀 Starting generation of {len(tasks)} clips...\n")
+    overall_start = time.time()
+    success = 0
+    failed = 0
 
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-        future_to_task = {executor.submit(generate_one, task): task for task in tasks}
+        futures = {
+            executor.submit(
+                generate_one, client,
+                t['text'], t['speaker'], t['output_path'],
+                t['index'], len(tasks)
+            ): t
+            for t in tasks
+        }
 
-        for future in as_completed(future_to_task):
-            task = future_to_task[future]
+        for future in as_completed(futures):
+            task = futures[future]
             try:
-                ok = future.result()
-                if ok:
-                    success_count += 1
+                if future.result():
+                    success += 1
                 else:
-                    fail_count += 1
+                    failed += 1
             except Exception as e:
-                print(f"❌ Exception for {task['output_path']}: {e}")
-                fail_count += 1
+                print(f"  💥 Exception for {task['output_path']}: {e}")
+                failed += 1
 
-    elapsed = time.time() - start_time
-    print(f"\n📊 Results: {success_count} succeeded, {fail_count} failed")
-    print(f"⏱️ Total time: {elapsed/60:.1f} minutes")
+    total_time = time.time() - overall_start
 
-    if fail_count > 0:
-        print("⚠️ Some audio files failed. Pipeline will continue with available files.")
+    print()
+    print("=" * 60)
+    print(f"📊 RESULTS: {success} succeeded, {failed} failed")
+    print(f"⏱️  Total time: {total_time:.1f}s ({total_time/60:.1f} min)")
+    if success > 0:
+        print(f"⚡ Average: {total_time/success:.1f}s per clip")
+    print("=" * 60)
+
+    if failed > 0:
+        print("⚠️  Some clips failed. Pipeline will continue with available audio.")
 
     # Save metadata for video assembly
-    timing = []
+    metadata = []
     for i, line in enumerate(lines):
         audio_path = f"audio/{line['speaker']}_{i:03d}.wav"
-        timing.append({
+        metadata.append({
             'index': i,
             'speaker': line['speaker'],
             'text': line['text'],
@@ -151,9 +215,9 @@ def main():
         })
 
     with open('audio/metadata.json', 'w', encoding='utf-8') as f:
-        json.dump(timing, f, indent=2)
+        json.dump(metadata, f, indent=2)
 
-    print(f"💾 Saved audio/metadata.json with {len(timing)} entries")
+    print(f"\n💾 Saved audio/metadata.json ({len(metadata)} entries)")
 
 
 if __name__ == '__main__':

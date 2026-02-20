@@ -1,18 +1,74 @@
-# Peter Video Maker
+# 🎬 Peter & Stewie Video Maker
 
-This project generates videos using Peter Griffin and Stewie Griffin assets.
+Generate **Family Guy short videos** (Instagram Reels) with AI-cloned voices of Peter and Stewie Griffin.
 
-## Structure (New)
+Uses **MOSS-TTS 1.7B** for zero-shot voice cloning on Google Colab (free), and **GitHub Actions** for automated video assembly.
 
-- `.github/workflows`: GitHub Actions workflows
-- `assets`: Binary assets (video, images, music)
-- `assets/peter.jpg`: Peter Griffin image
-- `assets/stewie.png`: Stewie Griffin image
-- `modal_app`: Modal application logic (HeartMuLa)
-- `scripts`: Python scripts for generation and assembly
-- `config`: Configuration files (scripts)
+---
 
-## Scripts
-- `scripts/generate_audio.py`: Generates voices using Edge TTS and background music using Modal.
-- `scripts/assemble_video.py`: Assembles the final video using MoviePy.
-- `modal_app/src/heartmula_api.py`: Modal app for music generation.
+## 🚀 Quick Start
+
+### Step 1: Launch the Voice AI on Google Colab
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/0xSatwik/peter-video-maker-github/blob/main/learnwithperandstewie.ipynb)
+
+1. Click the badge above to open the notebook
+2. Go to **Runtime → Change runtime type → T4 GPU**
+3. Click **Runtime → Run all**
+4. Wait ~5-8 minutes for the model to load
+5. Copy the **public Gradio URL** (e.g., `https://xxxxxxxx.gradio.live`)
+
+### Step 2: Generate the Video
+
+1. Go to **[Actions](../../actions)** → **"Generate Family Guy Short"**
+2. Click **"Run workflow"**
+3. Paste your **Colab Gradio URL** in the first field
+4. (Optional) Change the script file path
+5. Click **"Run workflow"** and wait for completion
+6. Download the video from the **Artifacts** section
+
+---
+
+## 📁 Project Structure
+
+```
+├── assets/                     # Character images + background video + voice samples
+│   ├── peter.png               # Peter Griffin character image
+│   ├── stewie.png              # Stewie Griffin character image
+│   ├── minecraft_bg.mp4        # Background video
+│   ├── peter-vocie.mp3         # Peter voice reference for cloning
+│   └── Stewies-voice.mp3       # Stewie voice reference for cloning
+├── config/scripts/             # Dialogue scripts
+│   └── EPISODE_01.txt          # Example episode script
+├── scripts/                    # Python pipeline scripts
+│   ├── generate_audio.py       # Generates voice via Colab Gradio API
+│   ├── assemble_video.py       # Assembles video with characters
+│   └── add_captions.py         # Adds animated captions
+├── learnwithperandstewie.ipynb  # Colab notebook (MOSS-TTS voice AI)
+└── .github/workflows/
+    └── generate.yml            # GitHub Actions workflow
+```
+
+## ✍️ Writing Scripts
+
+Script format (`config/scripts/EPISODE_01.txt`):
+```
+SPEAKER|TAGS|DIALOGUE TEXT
+```
+
+Example:
+```
+peter|male, deep, speech|Hey Stewie, what are you doing?
+stewie|male, high, speech|I'm plotting world domination, obviously.
+```
+
+## ⚙️ How It Works
+
+1. **Colab** runs MOSS-TTS 1.7B (zero-shot voice cloning) and exposes a Gradio API
+2. **GitHub Actions** sends each dialogue line to the Colab API with the matching voice reference
+3. Generated audio clips are assembled into a 1080×1920 video with character images and captions
+4. Final video is uploaded as a GitHub Actions artifact
+
+---
+
+*Made with ❤️*

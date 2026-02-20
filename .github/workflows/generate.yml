@@ -3,6 +3,9 @@ name: Generate Family Guy Short
 on:
   workflow_dispatch:
     inputs:
+      colab_url:
+        description: 'Colab Gradio URL (e.g. https://xxxxx.gradio.live)'
+        required: true
       script_file:
         description: 'Script file path'
         required: false
@@ -33,9 +36,7 @@ jobs:
       
       - name: Fix ImageMagick security policy
         run: |
-          # Allow ImageMagick to read @file references (needed by MoviePy TextClip)
           sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml
-          # Also remove any PDF/PS restrictions that might interfere
           sudo sed -i 's/<policy domain="coder" rights="none" pattern="PDF"/<policy domain="coder" rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml
       
       - name: Install Python dependencies
@@ -44,16 +45,13 @@ jobs:
           pip install -r requirements.txt
       
       - name: Create directories
-        run: |
-          mkdir -p assets audio output
+        run: mkdir -p audio output
       
-      - name: Generate ALL Audio (Voices via HeartMuLa)
+      - name: Generate Voice Audio (via Colab MOSS-TTS)
         env:
-          MODAL_ENDPOINT: ${{ secrets.MODAL_ENDPOINT }}
+          COLAB_URL: ${{ github.event.inputs.colab_url }}
           SCRIPT_PATH: ${{ github.event.inputs.script_file }}
-        run: |
-          echo "🎵 Starting audio generation..."
-          python scripts/generate_audio.py
+        run: python scripts/generate_audio.py
       
       - name: Verify audio files
         run: |
@@ -62,21 +60,17 @@ jobs:
           echo "Total WAV files: $(ls audio/*.wav 2>/dev/null | wc -l)"
           cat audio/metadata.json || echo "No metadata file"
       
-      - name: Assemble Video (with characters + layout)
+      - name: Assemble Video
         env:
           SCRIPT_PATH: ${{ github.event.inputs.script_file }}
-        run: |
-          echo "🎬 Assembling professional video..."
-          python scripts/assemble_video.py
+        run: python scripts/assemble_video.py
       
-      - name: Add Auto-Captions
-        run: |
-          echo "📝 Adding captions..."
-          python scripts/add_captions.py
+      - name: Add Captions
+        run: python scripts/add_captions.py
       
       - name: Verify final output
         run: |
-          echo "✅ Final video stats:"
+          echo "✅ Final video:"
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_reel.mp4
           ffprobe -v error -show_entries stream=width,height -of default=noprint_wrappers=1 output/final_reel.mp4
           ls -lh output/
@@ -100,12 +94,7 @@ jobs:
           echo "## 🎬 Video Generated Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📊 Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Run Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Script:** ${{ github.event.inputs.script_file }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Colab:** ${{ github.event.inputs.colab_url }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Format:** 1080x1920 (Instagram Reel)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Download:** Click on the artifacts above ⬆️" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📁 Generated Files" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          ls -lh audio/ output/ 2>/dev/null >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY

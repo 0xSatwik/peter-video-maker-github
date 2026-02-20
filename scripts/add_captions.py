@@ -117,7 +117,8 @@ def add_captions():
         temp_output,
         fps=24,
         codec='libx264',
-        audio_codec='copy',  # Copy audio without re-encoding
+        audio_codec='aac',
+        audio_bitrate='192k',
         preset='slow',       # Better compression
         threads=2
     )

@@ -113,13 +113,18 @@ def assemble():
     os.makedirs(frames_dir, exist_ok=True)
     
     # Use PNG for lossless intermediate frames - prevents quality loss from JPG compression
-    # Add :flags=lanczos for high-quality scaling
+    # Apply advanced AI-lite filters sequentially:
+    # 1. hqdn3d: Removes heavy blocky compression noise from low-res source
+    # 2. scale: Upscales using high-quality Lanczos algorithm
+    # 3. unsharp: Crisps the edges of the blocks violently to make them HD
+    # 4. eq: Boosts colors by 20% and contrast by 5% so the game pops
+    # 5. pad: Fits into 1080x1920 without awkward cropping
     subprocess.run([
         'ffmpeg', '-y',
         '-stream_loop', '-1', 
         '-i', 'assets/minecraft_bg.mp4',
         '-t', str(total_duration),
-        '-vf', f'scale=-1:{CANVAS_H}:flags=lanczos,pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:0:black,fps={FPS}',
+        '-vf', f'hqdn3d=1.5:1.5:6:6,scale=-1:{CANVAS_H}:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,eq=saturation=1.2:contrast=1.05,pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:0:black,fps={FPS}',
         '-an',  # Completely strip any background audio (music, sound effects) from the base video
         '-vsync', '0',  # Prevent frame dropping
         f'{frames_dir}/bg_%05d.png'  # PNG = lossless quality

@@ -3,31 +3,27 @@ from moviepy.editor import (
     CompositeVideoClip, ColorClip,
     concatenate_audioclips, concatenate_videoclips
 )
+from moviepy.audio.AudioClip import AudioClip
 from PIL import Image
 import numpy as np
+import subprocess
 import os
 import json
-import glob
 
 # === CONSTANTS ===
 CANVAS_W, CANVAS_H = 1080, 1920  # Instagram Reel (9:16)
-CHAR_HEIGHT = 500
+CHAR_HEIGHT = 400
+GAP_SECONDS = 0.3  # Small pause between dialogue lines
 FPS = 24
 
-# Fonts to try
 FONT_CANDIDATES = [
-    'DejaVu-Sans-Bold',
-    'DejaVu-Sans',
-    'Liberation-Sans-Bold',
-    'Liberation-Sans',
-    'Ubuntu-Bold',
-    'Arial-Bold',
-    'Arial',
+    'DejaVu-Sans-Bold', 'DejaVu-Sans',
+    'Liberation-Sans-Bold', 'Liberation-Sans',
+    'Ubuntu-Bold', 'Arial-Bold', 'Arial',
 ]
 
 
 def find_working_font():
-    """Find a font that works with ImageMagick."""
     for font in FONT_CANDIDATES:
         try:
             TextClip("test", fontsize=20, color='white', font=font, method='label')
@@ -35,66 +31,89 @@ def find_working_font():
             return font
         except Exception:
             continue
-    print("⚠️ No preferred font found, using ImageMagick default")
+    print("⚠️ No preferred font, using default")
     return None
 
 
+def prepare_background(input_path, output_path, duration):
+    """Use ffmpeg to create a looping, scaled, cropped background video.
+    This avoids MoviePy's broken resize+crop+loop chain."""
+
+    print(f"🎬 Preparing background video ({duration:.1f}s)...")
+
+    cmd = [
+        'ffmpeg', '-y',
+        '-stream_loop', '-1',       # loop infinitely
+        '-i', input_path,
+        '-t', str(duration),         # trim to exact duration
+        '-vf', f'scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,'
+               f'crop={CANVAS_W}:{CANVAS_H}',
+        '-an',                       # no audio from bg
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+        '-r', str(FPS),
+        output_path
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"⚠️ ffmpeg stderr: {result.stderr[-500:]}")
+        raise Exception("ffmpeg background prep failed")
+
+    print(f"✅ Background ready: {output_path}")
+
+
 def load_character(name):
-    """Load character image with background removal."""
+    """Load character image. Removes black background if image isn't already transparent."""
     for ext in ['png', 'jpg', 'jpeg']:
         path = f'assets/{name}.{ext}'
         if os.path.exists(path):
             img = Image.open(path).convert("RGBA")
             data = np.array(img)
 
-            # Remove near-black bg (peter.png)
-            black_mask = (data[:, :, 0] < 40) & \
-                         (data[:, :, 1] < 40) & \
-                         (data[:, :, 2] < 40)
-            # Remove near-white bg (stewie.png)
-            white_mask = (data[:, :, 0] > 215) & \
-                         (data[:, :, 1] > 215) & \
-                         (data[:, :, 2] > 215)
-            data[black_mask | white_mask, 3] = 0
+            # Check if image already has meaningful transparency
+            alpha = data[:, :, 3]
+            transparent_pct = np.sum(alpha < 250) / alpha.size
 
+            if transparent_pct < 0.05:
+                # Image has almost no transparency → has a solid background
+                # Remove ONLY near-black pixels (bg), preserve everything else
+                print(f"  🔧 {name}: removing black background...")
+                black_mask = (data[:, :, 0] < 30) & \
+                             (data[:, :, 1] < 30) & \
+                             (data[:, :, 2] < 30)
+                data[black_mask, 3] = 0
+            else:
+                print(f"  ✅ {name}: already transparent ({transparent_pct*100:.0f}%)")
+
+            # Scale to target height
             scale = CHAR_HEIGHT / img.height
             new_w = int(img.width * scale)
-            img_resized = Image.fromarray(data).resize(
-                (new_w, CHAR_HEIGHT), Image.LANCZOS
-            )
+            img_resized = Image.fromarray(data).resize((new_w, CHAR_HEIGHT), Image.LANCZOS)
+
             return np.array(img_resized)
 
     print(f"⚠️ Character image not found for '{name}'")
     return None
 
 
+def make_silence(duration, fps=44100):
+    """Create a silent audio clip."""
+    return AudioClip(lambda t: [0, 0], duration=duration, fps=fps)
+
+
 def assemble():
-    print("🎬 Starting professional video assembly...")
+    print("🎬 Starting video assembly...")
 
     font = find_working_font()
 
     # --- Load metadata ---
     if not os.path.exists('audio/metadata.json'):
-        raise Exception("❌ audio/metadata.json not found. Run generate_audio.py first.")
+        raise Exception("❌ audio/metadata.json not found")
 
     with open('audio/metadata.json', 'r') as f:
         metadata = json.load(f)
-
-    # --- Load background video ---
-    if not os.path.exists('assets/minecraft_bg.mp4'):
-        raise Exception("❌ Background video not found at assets/minecraft_bg.mp4")
-
-    bg_raw = VideoFileClip('assets/minecraft_bg.mp4')
-
-    # Resize to cover full screen (1080x1920)
-    bg_scale = max(CANVAS_W / bg_raw.w, CANVAS_H / bg_raw.h)
-    bg = bg_raw.resize(bg_scale)
-
-    # Center crop to 1080x1920
-    bw, bh = bg.size
-    x1 = max(0, int((bw - CANVAS_W) / 2))
-    y1 = max(0, int((bh - CANVAS_H) / 2))
-    bg = bg.crop(x1=x1, y1=y1, x2=x1 + CANVAS_W, y2=y1 + CANVAS_H)
 
     # --- Load character images ---
     characters = {}
@@ -102,21 +121,23 @@ def assemble():
         char_img = load_character(name)
         if char_img is not None:
             characters[name] = char_img
-            print(f"✅ Loaded character: {name} ({char_img.shape[1]}x{char_img.shape[0]})")
+            print(f"✅ Loaded {name}: {char_img.shape[1]}x{char_img.shape[0]}, "
+                  f"has_alpha={'yes' if char_img.shape[2] == 4 else 'no'}")
 
-    # --- Load voice audio clips (supports both .wav and .mp3) ---
-    voice_clips = []
+    # --- Load audio clips WITH gaps between them ---
+    audio_segments = []
     clip_timing = []
     current_time = 0.0
 
     for entry in metadata:
         audio_path = entry['audio_file']
         if not entry.get('exists', False) or not os.path.exists(audio_path):
-            print(f"⚠️ Skipping missing audio: {audio_path}")
+            print(f"⚠️ Skipping missing: {audio_path}")
             continue
 
         clip = AudioFileClip(audio_path)
-        voice_clips.append(clip)
+
+        audio_segments.append(clip)
         clip_timing.append({
             'start': current_time,
             'end': current_time + clip.duration,
@@ -126,65 +147,61 @@ def assemble():
         })
         current_time += clip.duration
 
-    if not voice_clips:
+        # Add a small gap between clips
+        gap = make_silence(GAP_SECONDS, fps=clip.fps)
+        audio_segments.append(gap)
+        current_time += GAP_SECONDS
+
+    if not audio_segments:
         raise Exception("❌ No audio clips found!")
 
-    print(f"🎵 Loaded {len(voice_clips)} voice clips, total duration: {current_time:.1f}s")
-
-    voice_audio = concatenate_audioclips(voice_clips)
+    voice_audio = concatenate_audioclips(audio_segments)
     total_duration = voice_audio.duration
+    print(f"🎵 {len(clip_timing)} clips, total: {total_duration:.1f}s (with {GAP_SECONDS}s gaps)")
 
-    # --- Loop background video using fl_time (keeps it animated!) ---
-    bg_duration = bg.duration
-    bg_looped = bg.fl_time(lambda t: t % bg_duration, apply_to=['mask', 'audio'])
-    bg_looped = bg_looped.set_duration(total_duration)
+    # --- Prepare background video (ffmpeg: loop + scale + crop) ---
+    os.makedirs('output', exist_ok=True)
+    bg_temp = 'output/bg_prepared.mp4'
+    prepare_background('assets/minecraft_bg.mp4', bg_temp, total_duration)
+    bg_video = VideoFileClip(bg_temp)
 
     # --- Build layers ---
     print("🎞️ Building layers...")
+    layers = [bg_video]
 
-    layers = [bg_looped]
+    # Character positions
+    char_y = CANVAS_H - CHAR_HEIGHT - 80
 
-    # Character positions: Peter on LEFT, Stewie on RIGHT
-    char_y = CANVAS_H - CHAR_HEIGHT - 100  # 100px from bottom
-
-    # Peter LEFT position
-    peter_x = 30
-    # Stewie RIGHT position
-    stewie_x = CANVAS_W - 30  # will subtract width after loading
-
-    # Place characters — show the SPEAKING character
     for timing in clip_timing:
         speaker = timing['speaker']
-        if speaker in characters:
-            char_data = characters[speaker]
-            char_w = char_data.shape[1]
+        if speaker not in characters:
+            continue
 
-            # Peter on left, Stewie on right
-            if speaker == 'peter':
-                cx = peter_x
-            else:
-                cx = CANVAS_W - char_w - 30  # right-aligned
+        char_data = characters[speaker]
+        char_w = char_data.shape[1]
 
-            char_clip = (
-                ImageClip(char_data)
-                .set_start(timing['start'])
-                .set_end(timing['end'])
-                .set_position((cx, char_y))
-                .fadein(0.15)
-                .fadeout(0.15)
-            )
-            layers.append(char_clip)
+        # Peter on LEFT, Stewie on RIGHT
+        if speaker == 'peter':
+            cx = 30
+        else:
+            cx = CANVAS_W - char_w - 30
 
-    # --- Compose final video ---
-    print("🎞️ Compositing all layers...")
+        char_clip = (
+            ImageClip(char_data)
+            .set_start(timing['start'])
+            .set_end(timing['end'])
+            .set_position((cx, char_y))
+        )
+        layers.append(char_clip)
+
+    # --- Compose ---
+    print("🎞️ Compositing...")
     final_video = CompositeVideoClip(layers, size=(CANVAS_W, CANVAS_H))
     final_video = final_video.set_audio(voice_audio)
     final_video = final_video.set_duration(total_duration)
 
-    os.makedirs('output', exist_ok=True)
     output_path = 'output/final_reel.mp4'
-
-    print(f"💾 Writing video to {output_path}...")
+    print(f"💾 Writing {output_path}...")
     final_video.write_videofile(
         output_path,
         fps=FPS,
@@ -194,11 +211,14 @@ def assemble():
         threads=2
     )
 
-    print(f"✅ Video assembled: {output_path} ({total_duration:.1f}s)")
+    print(f"✅ Done: {output_path} ({total_duration:.1f}s)")
 
-    # Save timing data for caption script
     with open('output/timing.json', 'w') as f:
         json.dump(clip_timing, f, indent=2)
+
+    # Cleanup temp
+    if os.path.exists(bg_temp):
+        os.remove(bg_temp)
 
 
 if __name__ == '__main__':

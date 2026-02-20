@@ -9,11 +9,12 @@ import numpy as np
 import subprocess
 import os
 import json
+import sys
 
 # === CONSTANTS ===
-CANVAS_W, CANVAS_H = 1080, 1920  # Instagram Reel (9:16)
+CANVAS_W, CANVAS_H = 1080, 1920
 CHAR_HEIGHT = 400
-GAP_SECONDS = 0.3  # Small pause between dialogue lines
+GAP_SECONDS = 0.3
 FPS = 24
 
 FONT_CANDIDATES = [
@@ -23,32 +24,50 @@ FONT_CANDIDATES = [
 ]
 
 
+def log(msg):
+    """Print with flush for GitHub Actions live logging."""
+    print(msg, flush=True)
+
+
 def find_working_font():
     for font in FONT_CANDIDATES:
         try:
             TextClip("test", fontsize=20, color='white', font=font, method='label')
-            print(f"🔤 Using font: {font}")
+            log(f"🔤 Using font: {font}")
             return font
         except Exception:
             continue
-    print("⚠️ No preferred font, using default")
+    log("⚠️ No preferred font, using default")
     return None
 
 
 def prepare_background(input_path, output_path, duration):
-    """Use ffmpeg to create a looping, scaled, cropped background video.
-    This avoids MoviePy's broken resize+crop+loop chain."""
+    """Use ffmpeg to create a looping, scaled, cropped background video."""
 
-    print(f"🎬 Preparing background video ({duration:.1f}s)...")
+    log(f"🎬 Preparing background video...")
+    log(f"   Input: {input_path} (exists={os.path.exists(input_path)})")
+    log(f"   Target: {CANVAS_W}x{CANVAS_H}, {duration:.1f}s, {FPS}fps")
+
+    # First check the source video
+    probe_cmd = [
+        'ffprobe', '-v', 'error',
+        '-show_entries', 'format=duration:stream=width,height,nb_frames,r_frame_rate',
+        '-of', 'json', input_path
+    ]
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+    log(f"   Source probe: {probe_result.stdout.strip()}")
 
     cmd = [
         'ffmpeg', '-y',
-        '-stream_loop', '-1',       # loop infinitely
+        '-stream_loop', '-1',
         '-i', input_path,
-        '-t', str(duration),         # trim to exact duration
-        '-vf', f'scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,'
-               f'crop={CANVAS_W}:{CANVAS_H}',
-        '-an',                       # no audio from bg
+        '-t', str(duration),
+        '-vf', (
+            f'scale={CANVAS_W}:{CANVAS_H}:'
+            f'force_original_aspect_ratio=increase,'
+            f'crop={CANVAS_W}:{CANVAS_H}'
+        ),
+        '-an',
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-pix_fmt', 'yuv420p',
@@ -56,98 +75,149 @@ def prepare_background(input_path, output_path, duration):
         output_path
     ]
 
+    log(f"   CMD: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
+
     if result.returncode != 0:
-        print(f"⚠️ ffmpeg stderr: {result.stderr[-500:]}")
+        log(f"   ❌ ffmpeg FAILED (exit={result.returncode})")
+        log(f"   STDERR: {result.stderr[-1000:]}")
         raise Exception("ffmpeg background prep failed")
 
-    print(f"✅ Background ready: {output_path}")
+    # Verify output
+    probe2 = subprocess.run(
+        ['ffprobe', '-v', 'error',
+         '-show_entries', 'format=duration:stream=width,height,nb_frames',
+         '-of', 'json', output_path],
+        capture_output=True, text=True
+    )
+    log(f"   Output probe: {probe2.stdout.strip()}")
+    log(f"   Output size: {os.path.getsize(output_path) / 1024:.0f}KB")
+    log(f"✅ Background ready")
 
 
 def load_character(name):
-    """Load character image. Removes black background if image isn't already transparent."""
+    """Load character image with smart background handling."""
     for ext in ['png', 'jpg', 'jpeg']:
         path = f'assets/{name}.{ext}'
         if os.path.exists(path):
-            img = Image.open(path).convert("RGBA")
-            data = np.array(img)
+            log(f"   Loading {path} ({os.path.getsize(path)/1024:.0f}KB)...")
 
-            # Check if image already has meaningful transparency
-            alpha = data[:, :, 3]
-            transparent_pct = np.sum(alpha < 250) / alpha.size
+            try:
+                img = Image.open(path).convert("RGBA")
+                data = np.array(img)
+                log(f"   Raw size: {img.width}x{img.height}, channels={data.shape[2]}")
 
-            if transparent_pct < 0.05:
-                # Image has almost no transparency → has a solid background
-                # Remove ONLY near-black pixels (bg), preserve everything else
-                print(f"  🔧 {name}: removing black background...")
-                black_mask = (data[:, :, 0] < 30) & \
-                             (data[:, :, 1] < 30) & \
-                             (data[:, :, 2] < 30)
-                data[black_mask, 3] = 0
-            else:
-                print(f"  ✅ {name}: already transparent ({transparent_pct*100:.0f}%)")
+                # Check transparency
+                alpha = data[:, :, 3]
+                fully_opaque = np.sum(alpha == 255) / alpha.size * 100
+                fully_transparent = np.sum(alpha == 0) / alpha.size * 100
+                log(f"   Alpha: {fully_opaque:.1f}% opaque, {fully_transparent:.1f}% transparent")
 
-            # Scale to target height
-            scale = CHAR_HEIGHT / img.height
-            new_w = int(img.width * scale)
-            img_resized = Image.fromarray(data).resize((new_w, CHAR_HEIGHT), Image.LANCZOS)
+                if fully_transparent < 5:
+                    # Almost no transparency → remove black background
+                    log(f"   🔧 Removing black background...")
+                    r, g, b = data[:, :, 0], data[:, :, 1], data[:, :, 2]
+                    black_mask = (r < 30) & (g < 30) & (b < 30)
+                    pixels_removed = np.sum(black_mask)
+                    data[black_mask, 3] = 0
+                    log(f"   Removed {pixels_removed} black pixels ({pixels_removed/alpha.size*100:.1f}%)")
 
-            return np.array(img_resized)
+                # Scale
+                scale = CHAR_HEIGHT / img.height
+                new_w = int(img.width * scale)
+                img_resized = Image.fromarray(data).resize((new_w, CHAR_HEIGHT), Image.LANCZOS)
+                result = np.array(img_resized)
+                log(f"   ✅ Final: {new_w}x{CHAR_HEIGHT}, shape={result.shape}")
+                return result
 
-    print(f"⚠️ Character image not found for '{name}'")
+            except Exception as e:
+                log(f"   ❌ FAILED to load {name}: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+
+    log(f"   ❌ No image found for '{name}' in assets/")
     return None
 
 
 def make_silence(duration, fps=44100):
-    """Create a silent audio clip."""
     return AudioClip(lambda t: [0, 0], duration=duration, fps=fps)
 
 
 def assemble():
-    print("🎬 Starting video assembly...")
+    log("=" * 60)
+    log("🎬 VIDEO ASSEMBLY — DEBUG MODE")
+    log("=" * 60)
 
     font = find_working_font()
 
     # --- Load metadata ---
+    log("\n📄 LOADING METADATA...")
     if not os.path.exists('audio/metadata.json'):
         raise Exception("❌ audio/metadata.json not found")
 
     with open('audio/metadata.json', 'r') as f:
         metadata = json.load(f)
 
+    log(f"   Entries in metadata: {len(metadata)}")
+    for i, entry in enumerate(metadata):
+        log(f"   [{i:2d}] speaker={entry['speaker']:8s} exists={entry.get('exists',False)} "
+            f"file={entry['audio_file']} text=\"{entry['text'][:40]}...\"")
+
+    # --- List audio files actually on disk ---
+    log("\n📁 AUDIO FILES ON DISK:")
+    for f in sorted(os.listdir('audio')):
+        fpath = os.path.join('audio', f)
+        log(f"   {f} ({os.path.getsize(fpath)/1024:.0f}KB)")
+
     # --- Load character images ---
+    log("\n🎭 LOADING CHARACTERS...")
     characters = {}
     for name in ['peter', 'stewie']:
+        log(f"\n   --- {name.upper()} ---")
         char_img = load_character(name)
         if char_img is not None:
             characters[name] = char_img
-            print(f"✅ Loaded {name}: {char_img.shape[1]}x{char_img.shape[0]}, "
-                  f"has_alpha={'yes' if char_img.shape[2] == 4 else 'no'}")
+        else:
+            log(f"   ⚠️ {name} NOT loaded!")
 
-    # --- Load audio clips WITH gaps between them ---
+    log(f"\n   Characters available: {list(characters.keys())}")
+
+    # --- Load audio clips ---
+    log("\n🎵 LOADING AUDIO CLIPS...")
     audio_segments = []
     clip_timing = []
     current_time = 0.0
 
     for entry in metadata:
         audio_path = entry['audio_file']
+        speaker = entry['speaker']
+
         if not entry.get('exists', False) or not os.path.exists(audio_path):
-            print(f"⚠️ Skipping missing: {audio_path}")
+            log(f"   ⚠️ SKIP (missing): {audio_path}")
             continue
 
         clip = AudioFileClip(audio_path)
-
         audio_segments.append(clip)
-        clip_timing.append({
+
+        timing_entry = {
             'start': current_time,
             'end': current_time + clip.duration,
-            'speaker': entry['speaker'],
+            'speaker': speaker,
             'text': entry['text'],
             'index': entry['index']
-        })
+        }
+        clip_timing.append(timing_entry)
+
+        # Check if this speaker has a character loaded
+        has_char = speaker in characters
+        log(f"   [{entry['index']:2d}] {speaker:8s} | {clip.duration:5.1f}s | "
+            f"t={current_time:.1f}-{current_time+clip.duration:.1f} | "
+            f"char={'✅' if has_char else '❌'} | \"{entry['text'][:35]}...\"")
+
         current_time += clip.duration
 
-        # Add a small gap between clips
+        # Gap
         gap = make_silence(GAP_SECONDS, fps=clip.fps)
         audio_segments.append(gap)
         current_time += GAP_SECONDS
@@ -157,30 +227,41 @@ def assemble():
 
     voice_audio = concatenate_audioclips(audio_segments)
     total_duration = voice_audio.duration
-    print(f"🎵 {len(clip_timing)} clips, total: {total_duration:.1f}s (with {GAP_SECONDS}s gaps)")
+    log(f"\n   Total clips: {len(clip_timing)}")
+    log(f"   Total duration: {total_duration:.1f}s")
 
-    # --- Prepare background video (ffmpeg: loop + scale + crop) ---
+    peter_count = sum(1 for t in clip_timing if t['speaker'] == 'peter')
+    stewie_count = sum(1 for t in clip_timing if t['speaker'] == 'stewie')
+    other_count = sum(1 for t in clip_timing if t['speaker'] not in ('peter', 'stewie'))
+    log(f"   Peter lines: {peter_count}, Stewie lines: {stewie_count}, Other: {other_count}")
+
+    # --- Prepare background ---
+    log("\n🎬 PREPARING BACKGROUND VIDEO...")
     os.makedirs('output', exist_ok=True)
     bg_temp = 'output/bg_prepared.mp4'
     prepare_background('assets/minecraft_bg.mp4', bg_temp, total_duration)
+
     bg_video = VideoFileClip(bg_temp)
+    log(f"   Loaded bg_video: {bg_video.w}x{bg_video.h}, "
+        f"duration={bg_video.duration:.1f}s, fps={bg_video.fps}")
 
     # --- Build layers ---
-    print("🎞️ Building layers...")
+    log("\n🎞️ BUILDING LAYERS...")
     layers = [bg_video]
 
-    # Character positions
     char_y = CANVAS_H - CHAR_HEIGHT - 80
+    log(f"   Character Y position: {char_y}")
 
-    for timing in clip_timing:
+    for i, timing in enumerate(clip_timing):
         speaker = timing['speaker']
+
         if speaker not in characters:
+            log(f"   [{i}] ❌ SKIP — no character for speaker '{speaker}'")
             continue
 
         char_data = characters[speaker]
         char_w = char_data.shape[1]
 
-        # Peter on LEFT, Stewie on RIGHT
         if speaker == 'peter':
             cx = 30
         else:
@@ -194,14 +275,19 @@ def assemble():
         )
         layers.append(char_clip)
 
+        log(f"   [{i}] {speaker:8s} at x={cx:4d} y={char_y} "
+            f"t={timing['start']:.1f}-{timing['end']:.1f}")
+
+    log(f"\n   Total layers: {len(layers)} (1 bg + {len(layers)-1} characters)")
+
     # --- Compose ---
-    print("🎞️ Compositing...")
+    log("\n🎞️ COMPOSITING FINAL VIDEO...")
     final_video = CompositeVideoClip(layers, size=(CANVAS_W, CANVAS_H))
     final_video = final_video.set_audio(voice_audio)
     final_video = final_video.set_duration(total_duration)
 
     output_path = 'output/final_reel.mp4'
-    print(f"💾 Writing {output_path}...")
+    log(f"💾 Writing {output_path}...")
     final_video.write_videofile(
         output_path,
         fps=FPS,
@@ -211,12 +297,11 @@ def assemble():
         threads=2
     )
 
-    print(f"✅ Done: {output_path} ({total_duration:.1f}s)")
+    log(f"\n✅ DONE: {output_path} ({total_duration:.1f}s)")
 
     with open('output/timing.json', 'w') as f:
         json.dump(clip_timing, f, indent=2)
 
-    # Cleanup temp
     if os.path.exists(bg_temp):
         os.remove(bg_temp)
 

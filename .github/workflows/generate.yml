@@ -56,17 +56,29 @@ jobs:
       - name: Verify audio files
         run: |
           echo "📊 Audio files generated:"
-          ls -la audio/
+          ls -lh audio/
+          echo ""
           echo "Total WAV files: $(ls audio/*.wav 2>/dev/null | wc -l)"
-          cat audio/metadata.json || echo "No metadata file"
+          echo ""
+          echo "📋 Metadata:"
+          cat audio/metadata.json | python3 -m json.tool || echo "No metadata"
+          echo ""
+          echo "📁 Character images in assets/:"
+          ls -lh assets/*.png assets/*.jpg 2>/dev/null || echo "No images found"
+          echo ""
+          echo "🎬 Background video:"
+          ffprobe -v error -show_entries format=duration:stream=width,height -of json assets/minecraft_bg.mp4 2>/dev/null || echo "No bg video"
       
-      - name: Assemble Video
+      - name: Assemble Video (DEBUG)
         env:
           SCRIPT_PATH: ${{ github.event.inputs.script_file }}
-        run: python scripts/assemble_video.py
+          PYTHONUNBUFFERED: '1'
+        run: python -u scripts/assemble_video.py
       
       - name: Add Captions
-        run: python scripts/add_captions.py
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python -u scripts/add_captions.py
       
       - name: Verify final output
         run: |

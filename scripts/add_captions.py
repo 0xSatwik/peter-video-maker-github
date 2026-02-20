@@ -3,9 +3,32 @@ Add captions to the assembled video.
 Uses the script file + audio timing instead of Whisper transcription.
 This is faster, more accurate, and removes the openai-whisper dependency.
 """
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ColorClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 import json
 import os
+
+
+# Fonts to try in order (same list as assemble_video.py)
+FONT_CANDIDATES = [
+    'DejaVu-Sans-Bold',
+    'DejaVu-Sans',
+    'Liberation-Sans-Bold',
+    'Liberation-Sans',
+    'Ubuntu-Bold',
+    'Arial-Bold',
+    'Arial',
+]
+
+
+def find_working_font():
+    """Find a font that works with ImageMagick."""
+    for font in FONT_CANDIDATES:
+        try:
+            TextClip("test", fontsize=20, color='white', font=font, method='label')
+            return font
+        except Exception:
+            continue
+    return None
 
 
 def add_captions():
@@ -25,9 +48,10 @@ def add_captions():
 
     print(f"📄 Loaded {len(timing)} caption entries")
 
-    # The assemble_video.py already adds dialogue text in the bottom panel.
-    # This script adds word-by-word highlight captions for extra polish
-    # in the MIDDLE area (between top video and bottom characters).
+    # Find working font
+    font = find_working_font()
+    if font:
+        print(f"🔤 Using font: {font}")
 
     caption_clips = []
 
@@ -35,17 +59,15 @@ def add_captions():
         text = entry['text']
         start = entry['start']
         end = entry['end']
-        speaker = entry.get('speaker', 'unknown')
         duration = end - start
 
-        # Split long text into chunks of ~6-8 words for readability
+        # Split long text into chunks of ~7 words for readability
         words = text.split()
         chunks = []
         chunk_size = 7
         for i in range(0, len(words), chunk_size):
             chunks.append(' '.join(words[i:i + chunk_size]))
 
-        # Distribute chunks evenly across the clip duration
         if not chunks:
             continue
 
@@ -56,34 +78,30 @@ def add_captions():
             chunk_end = chunk_start + chunk_duration
 
             try:
-                # Caption background pill
-                txt = TextClip(
-                    chunk,
-                    fontsize=44,
-                    color='white',
-                    font='DejaVu-Sans-Bold',
-                    stroke_color='black',
-                    stroke_width=2,
-                    method='caption',
-                    size=(900, None),
-                    align='center'
-                )
+                kwargs = {
+                    'fontsize': 44,
+                    'color': 'white',
+                    'stroke_color': 'black',
+                    'stroke_width': 2,
+                    'method': 'caption',
+                    'size': (900, None),
+                    'align': 'center',
+                }
+                if font:
+                    kwargs['font'] = font
 
-                # Position in the transition zone between top and bottom
-                # (around y=900, just above the bottom panel)
+                txt = TextClip(chunk, **kwargs)
                 txt = txt.set_position(('center', 880))
                 txt = txt.set_start(chunk_start).set_end(chunk_end)
-                txt = txt.crossfadein(0.15).crossfadeout(0.15)
+                txt = txt.fadein(0.15).fadeout(0.15)
 
                 caption_clips.append(txt)
 
             except Exception as e:
-                print(f"⚠️ Failed to create caption for chunk '{chunk}': {e}")
+                print(f"⚠️ Failed to create caption for '{chunk}': {e}")
 
     if not caption_clips:
-        print("⚠️ No caption clips created. Saving video without captions.")
-        # Just copy the video
-        video.write_videofile('output/final_reel.mp4', fps=24, codec='libx264', audio_codec='aac')
+        print("⚠️ No captions created, keeping video as-is.")
         return
 
     print(f"✨ Created {len(caption_clips)} caption segments")

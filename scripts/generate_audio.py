@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MODAL_ENDPOINT = os.environ.get('MODAL_ENDPOINT')
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds (doubles each retry)
-PARALLEL_WORKERS = 4  # concurrent requests (Modal auto-scales containers)
+PARALLEL_WORKERS = 3  # concurrent requests (Modal auto-scales containers)
 
 
 def generate_audio(lyrics, tags, duration, output_path):

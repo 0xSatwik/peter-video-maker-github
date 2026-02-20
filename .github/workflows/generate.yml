@@ -7,10 +7,6 @@ on:
         description: 'Script file path'
         required: false
         default: 'config/scripts/EPISODE_01.txt'
-      music_duration:
-        description: 'Background music duration (seconds)'
-        required: false
-        default: '60'
 
 jobs:
   create-short:
@@ -35,6 +31,13 @@ jobs:
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg imagemagick fonts-dejavu-core
       
+      - name: Fix ImageMagick security policy
+        run: |
+          # Allow ImageMagick to read @file references (needed by MoviePy TextClip)
+          sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml
+          # Also remove any PDF/PS restrictions that might interfere
+          sudo sed -i 's/<policy domain="coder" rights="none" pattern="PDF"/<policy domain="coder" rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml
+      
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
@@ -44,11 +47,10 @@ jobs:
         run: |
           mkdir -p assets audio output
       
-      - name: Generate ALL Audio (Voices + Music via HeartMuLa)
+      - name: Generate ALL Audio (Voices via HeartMuLa)
         env:
           MODAL_ENDPOINT: ${{ secrets.MODAL_ENDPOINT }}
           SCRIPT_PATH: ${{ github.event.inputs.script_file }}
-          MUSIC_DURATION: ${{ github.event.inputs.music_duration }}
         run: |
           echo "🎵 Starting audio generation..."
           python scripts/generate_audio.py
@@ -85,6 +87,13 @@ jobs:
           name: family-guy-short-${{ github.run_number }}
           path: output/final_reel.mp4
           retention-days: 30
+
+      - name: Upload audio files
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-files-${{ github.run_number }}
+          path: audio/
+          retention-days: 30
       
       - name: Create summary
         run: |
@@ -94,7 +103,7 @@ jobs:
           echo "- **Run Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Script:** ${{ github.event.inputs.script_file }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Format:** 1080x1920 (Instagram Reel)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Download:** Click on the artifact above ⬆️" >> $GITHUB_STEP_SUMMARY
+          echo "- **Download:** Click on the artifacts above ⬆️" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📁 Generated Files" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

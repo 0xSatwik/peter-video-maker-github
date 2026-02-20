@@ -1,14 +1,11 @@
 """
-Add captions to the assembled video.
-Uses the script file + audio timing instead of Whisper transcription.
-This is faster, more accurate, and removes the openai-whisper dependency.
+Add highlight captions to the assembled video.
+Uses timing.json from the assembly step (no Whisper needed).
 """
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 import json
 import os
 
-
-# Fonts to try in order (same list as assemble_video.py)
 FONT_CANDIDATES = [
     'DejaVu-Sans-Bold',
     'DejaVu-Sans',
@@ -34,10 +31,8 @@ def find_working_font():
 def add_captions():
     print("📝 Adding auto-captions...")
 
-    # Load the assembled video
     video = VideoFileClip('output/final_reel.mp4')
 
-    # Load timing data from assembly step
     timing_path = 'output/timing.json'
     if not os.path.exists(timing_path):
         print("❌ timing.json not found. Run assemble_video.py first.")
@@ -48,12 +43,15 @@ def add_captions():
 
     print(f"📄 Loaded {len(timing)} caption entries")
 
-    # Find working font
     font = find_working_font()
     if font:
         print(f"🔤 Using font: {font}")
 
     caption_clips = []
+
+    # Place highlight captions in the middle of the screen
+    # (above the character area, below the clean top area)
+    caption_y = 1050  # Middle area of the 1920px height
 
     for entry in timing:
         text = entry['text']
@@ -61,7 +59,7 @@ def add_captions():
         end = entry['end']
         duration = end - start
 
-        # Split long text into chunks of ~7 words for readability
+        # Split into readable chunks (~7 words)
         words = text.split()
         chunks = []
         chunk_size = 7
@@ -79,10 +77,10 @@ def add_captions():
 
             try:
                 kwargs = {
-                    'fontsize': 44,
-                    'color': 'white',
+                    'fontsize': 46,
+                    'color': 'yellow',
                     'stroke_color': 'black',
-                    'stroke_width': 2,
+                    'stroke_width': 2.5,
                     'method': 'caption',
                     'size': (900, None),
                     'align': 'center',
@@ -91,14 +89,14 @@ def add_captions():
                     kwargs['font'] = font
 
                 txt = TextClip(chunk, **kwargs)
-                txt = txt.set_position(('center', 880))
+                txt = txt.set_position(('center', caption_y))
                 txt = txt.set_start(chunk_start).set_end(chunk_end)
-                txt = txt.fadein(0.15).fadeout(0.15)
+                txt = txt.fadein(0.1).fadeout(0.1)
 
                 caption_clips.append(txt)
 
             except Exception as e:
-                print(f"⚠️ Failed to create caption for '{chunk}': {e}")
+                print(f"⚠️ Failed caption for '{chunk}': {e}")
 
     if not caption_clips:
         print("⚠️ No captions created, keeping video as-is.")
@@ -106,7 +104,6 @@ def add_captions():
 
     print(f"✨ Created {len(caption_clips)} caption segments")
 
-    # Composite captions on top of the video
     final = CompositeVideoClip([video] + caption_clips)
     final.write_videofile(
         'output/final_reel.mp4',

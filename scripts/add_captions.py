@@ -6,13 +6,16 @@ from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 import json
 import os
 
+# Better font candidates for social media - modern and attractive
 FONT_CANDIDATES = [
-    'DejaVu-Sans-Bold',
-    'DejaVu-Sans',
-    'Liberation-Sans-Bold',
-    'Liberation-Sans',
-    'Ubuntu-Bold',
-    'Arial-Bold',
+    'Montserrat-ExtraBold',     # Modern, bold, attractive
+    'Montserrat-Bold',
+    'Roboto-Bold',              # Clean, modern
+    'OpenSans-Bold',            # Friendly, readable
+    'NotoSans-Bold',            # Universal, clean
+    'DejaVu-Sans-Bold',         # Fallback
+    'Liberation-Sans-Bold',     # Fallback
+    'Arial-Bold',               # Fallback
     'Arial',
 ]
 
@@ -22,9 +25,11 @@ def find_working_font():
     for font in FONT_CANDIDATES:
         try:
             TextClip("test", fontsize=20, color='white', font=font, method='label')
+            print(f"   ✅ Found font: {font}")
             return font
         except Exception:
             continue
+    print("   ⚠️ No preferred font found, using default")
     return None
 
 
@@ -76,13 +81,14 @@ def add_captions():
             chunk_end = chunk_start + chunk_duration
 
             try:
+                # Improved caption styling for social media
                 kwargs = {
-                    'fontsize': 46,
-                    'color': 'yellow',
-                    'stroke_color': 'black',
-                    'stroke_width': 2.5,
+                    'fontsize': 58,                    # Larger for mobile viewing
+                    'color': '#FFD700',                # Gold yellow (more vibrant)
+                    'stroke_color': '#000000',         # Black stroke
+                    'stroke_width': 3,                 # Thicker stroke for readability
                     'method': 'caption',
-                    'size': (900, None),
+                    'size': (950, None),               # Slightly wider
                     'align': 'center',
                 }
                 if font:
@@ -106,12 +112,13 @@ def add_captions():
 
     temp_output = 'output/final_reel_captioned.mp4'
     final = CompositeVideoClip([video] + caption_clips)
+    # High quality encoding settings matching assemble_video.py
     final.write_videofile(
         temp_output,
         fps=24,
         codec='libx264',
-        audio_codec='aac',
-        preset='medium',
+        audio_codec='copy',  # Copy audio without re-encoding
+        preset='slow',       # Better compression
         threads=2
     )
     

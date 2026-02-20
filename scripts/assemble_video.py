@@ -112,15 +112,17 @@ def assemble():
         shutil.rmtree(frames_dir)
     os.makedirs(frames_dir, exist_ok=True)
     
+    # Use PNG for lossless intermediate frames - prevents quality loss from JPG compression
+    # Add :flags=lanczos for high-quality scaling
     subprocess.run([
         'ffmpeg', '-y',
         '-stream_loop', '-1', 
         '-i', 'assets/minecraft_bg.mp4',
         '-t', str(total_duration),
-        '-vf', f'scale=-1:{CANVAS_H},pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:0:black,fps={FPS}',
+        '-vf', f'scale=-1:{CANVAS_H}:flags=lanczos,pad={CANVAS_W}:{CANVAS_H}:(ow-iw)/2:0:black,fps={FPS}',
         '-an',  # Completely strip any background audio (music, sound effects) from the base video
-        '-qscale:v', '2',
-        f'{frames_dir}/bg_%05d.jpg'
+        '-vsync', '0',  # Prevent frame dropping
+        f'{frames_dir}/bg_%05d.png'  # PNG = lossless quality
     ], check=True, capture_output=True)
     
     log("\n🖌️ COMPOSITING CHARACTERS ONTO FRAMES...")
@@ -136,7 +138,7 @@ def assemble():
 
     start_time = time.time()
     for f_idx in range(total_frames):
-        bg_path = f"{frames_dir}/bg_{f_idx+1:05d}.jpg"
+        bg_path = f"{frames_dir}/bg_{f_idx+1:05d}.png"  # PNG format
         if not os.path.exists(bg_path):
             break
             
@@ -154,7 +156,7 @@ def assemble():
             # Paste with alpha
             bg_img.paste(char_img, (cx, char_y), char_img)
             
-            # Save at high quality
+            # Save as PNG for lossless quality
             bg_img.convert("RGB").save(bg_path, quality=95)
             
         if f_idx % 200 == 0 and f_idx > 0:
@@ -203,14 +205,21 @@ def assemble():
     log("\n🎞️ ENCODING FINAL VIDEO...")
     output_path = 'output/final_reel.mp4'
     
+    # High quality encoding settings:
+    # - CRF 18: Visually lossless quality (lower = better)
+    # - Preset slow: Better compression efficiency
+    # - PNG input: Lossless intermediate frames
     encode_cmd = [
         'ffmpeg', '-y',
         '-framerate', str(FPS),
-        '-i', f'{frames_dir}/bg_%05d.jpg',
+        '-i', f'{frames_dir}/bg_%05d.png',  # PNG input for lossless quality
         '-i', 'output/combined_audio.wav',
-        '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+        '-c:v', 'libx264', 
+        '-preset', 'slow',      # Better compression
+        '-crf', '18',           # Visually lossless quality
         '-c:a', 'aac', '-b:a', '192k',
         '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',  # Better streaming
         '-shortest',
         output_path
     ]

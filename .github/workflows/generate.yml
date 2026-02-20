@@ -32,7 +32,14 @@ jobs:
           TZ: UTC
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg imagemagick fonts-dejavu-core
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ffmpeg \
+            imagemagick \
+            fonts-dejavu-core \
+            fonts-noto \
+            fonts-roboto \
+            fonts-open-sans \
+            fonts-montserrat
       
       - name: Fix ImageMagick security policy
         run: |

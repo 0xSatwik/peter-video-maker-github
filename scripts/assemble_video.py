@@ -8,12 +8,14 @@ import shutil
 
 # === CONSTANTS ===
 CANVAS_W, CANVAS_H = 1080, 1920
-CHAR_HEIGHT = 650       # Much bigger characters (was 400) — matches reference style
+CHAR_HEIGHT = 750       # 15% bigger characters (was 650) — large cinematic look
 GAP_SECONDS = 0.3
 FPS = 24
-CAPTION_Y = 750         # Center of screen for captions (above characters)
-CAPTION_FONT_SIZE = 72  # Bold, large, readable on mobile
+CAPTION_Y = 700         # Center of screen for captions (above characters)
+CAPTION_FONT_SIZE = 68  # Bold, large, readable on mobile (slightly smaller to fit with wrapping)
+CAPTION_PADDING = 50    # Horizontal padding on each side to prevent text going off-screen
 CHUNK_SIZE = 4          # ~4 words per caption line (short punchy chunks)
+LINE_SPACING = 12       # Extra pixels between wrapped caption lines
 
 
 def log(msg):
@@ -69,37 +71,70 @@ def draw_caption_with_highlight(draw, text, active_word_idx, font, canvas_w, y_p
     Draw ALL-CAPS caption text with word-by-word green highlighting.
     All words are white, the active word is bright green.
     Heavy black stroke on all text for readability.
+    Auto-wraps to multiple lines if text is too wide for the canvas.
     """
     words = text.upper().split()
     if not words:
         return
     
-    # Calculate total width of all words with spaces
+    max_width = canvas_w - (CAPTION_PADDING * 2)  # Available width with padding
     space_width = draw.textlength(" ", font=font)
-    word_widths = [draw.textlength(w, font=font) for w in words]
-    total_width = sum(word_widths) + space_width * (len(words) - 1)
-    
-    # Start position (centered)
-    x = (canvas_w - total_width) / 2
-    
     stroke_width = 4  # Heavy black stroke
     
+    # Get font height for line spacing
+    bbox = font.getbbox("A")
+    line_height = bbox[3] - bbox[1] + LINE_SPACING
+    
+    # --- Word-wrap: split words into lines that fit within max_width ---
+    lines = []          # Each line is a list of (word, original_index) tuples
+    current_line = []
+    current_width = 0
+    
     for i, word in enumerate(words):
-        # Active word = bright green, others = white
-        if i == active_word_idx:
-            fill_color = '#00FF00'  # Bright green
+        word_w = draw.textlength(word, font=font)
+        needed = word_w + (space_width if current_line else 0)
+        
+        if current_line and current_width + needed > max_width:
+            # Start a new line
+            lines.append(current_line)
+            current_line = [(word, i)]
+            current_width = word_w
         else:
-            fill_color = '#FFFFFF'  # White
+            current_line.append((word, i))
+            current_width += needed
+    
+    if current_line:
+        lines.append(current_line)
+    
+    # --- Draw each line centered ---
+    total_text_height = len(lines) * line_height
+    start_y = y_pos - total_text_height / 2  # Center vertically around y_pos
+    
+    for line_idx, line_words in enumerate(lines):
+        # Calculate line width
+        word_widths = [draw.textlength(w, font=font) for w, _ in line_words]
+        line_width = sum(word_widths) + space_width * (len(line_words) - 1)
         
-        # Draw the word with black stroke
-        draw.text(
-            (x, y_pos), word, font=font,
-            fill=fill_color,
-            stroke_fill='#000000',
-            stroke_width=stroke_width
-        )
+        # Center this line horizontally
+        x = (canvas_w - line_width) / 2
+        line_y = start_y + line_idx * line_height
         
-        x += word_widths[i] + space_width
+        for j, (word, orig_idx) in enumerate(line_words):
+            # Active word = bright green, others = white
+            if orig_idx == active_word_idx:
+                fill_color = '#00FF00'  # Bright green
+            else:
+                fill_color = '#FFFFFF'  # White
+            
+            # Draw the word with black stroke
+            draw.text(
+                (x, line_y), word, font=font,
+                fill=fill_color,
+                stroke_fill='#000000',
+                stroke_width=stroke_width
+            )
+            
+            x += word_widths[j] + space_width
 
 
 def assemble():

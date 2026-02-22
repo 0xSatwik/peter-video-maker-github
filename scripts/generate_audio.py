@@ -16,7 +16,7 @@ MAX_RETRIES = 2
 # User-Vetted Perfect Preset (Matches Colab Screenshot)
 HIGH_QUALITY = {
     "max_new_tokens": 2850,
-    "speed": 1.4,                 # Updated to 1.4x faster
+    "speed": 1.6,                 # Updated to 1.4x faster
     "text_temp": 1.5,
     "text_top_p": 1.0,
     "text_top_k": 50,

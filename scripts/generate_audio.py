@@ -118,8 +118,12 @@ def parse_script(script_path):
     with open(script_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
+            # Skip empty lines, comments, and common header text
             if not line or line.startswith('#'):
                 continue
+            if line.lower().startswith('format:') or line.lower().startswith('family guy'):
+                continue
+                
             parts = line.split('|')
             if len(parts) == 3:
                 speaker = parts[0].strip().lower()

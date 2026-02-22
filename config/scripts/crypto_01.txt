@@ -1,5 +1,5 @@
-Family Guy Shorts - Episode 01 (Updated Crypto)
-Format: SPEAKER|TAGS|LYRICS
+# Family Guy Shorts - Episode 01 (Updated Crypto)
+# Format: SPEAKER|TAGS|LYRICS
 PETER|male, deep, speech, clear, narrative|If you're still waiting for Bitcoin to hit a hundred-k before you sell, stop what you’re doing because you’re about to lose everything. It is February 22nd, 2026, and the market just pulled the rug on the biggest bull run in history.
 STEWIE|male, high, speech, clear, british|Peter, you look like you just saw a ghost, or perhaps just your bank statement. Has the digital gold finally turned into digital dirt?
 PETER|male, deep, speech, clear, excited|It’s a massacre, Stewie! Since January, Bitcoin has plummeted from eighty-four thousand dollars all the way down to sixty-eight thousand today. We’re officially trading below the cost of production, which is eighty-seven grand, meaning the miners are literally paying to stay alive!

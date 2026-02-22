@@ -13,17 +13,17 @@ COLAB_URL = os.environ.get('COLAB_URL', '')
 PARALLEL_WORKERS = 5
 MAX_RETRIES = 2
 
-# Ultra-Consistent preset — tightly tuned to lock in the zero-shot voice clone
+# User-Vetted Perfect Preset (Matches Colab Screenshot)
 HIGH_QUALITY = {
-    "max_new_tokens": 2000,
-    "speed": 1.1,                 # Slightly faster for a tighter cadence
-    "text_temp": 0.3,             # Very low: Stops the model from trying to inject random emotion/prosody
-    "text_top_p": 0.7,            # Restricts token choice, forcing predictability
-    "text_top_k": 20,             # Tight bounds on text sampling
-    "audio_temp": 0.3,            # Very low: The most critical setting to prevent the voice from changing or mutating
-    "audio_top_p": 0.7,           # Restricts acoustic tokens to only the most likely (the ones that sound like the reference)
-    "audio_top_k": 20,            # Tight bounds on audio sampling
-    "audio_repetition_penalty": 1.5, # High: strictly forbids stuttering or looping on the same acoustic sound
+    "max_new_tokens": 2850,
+    "speed": 1.0,
+    "text_temp": 1.5,
+    "text_top_p": 1.0,
+    "text_top_k": 50,
+    "audio_temp": 0.95,
+    "audio_top_p": 0.95,
+    "audio_top_k": 50,
+    "audio_repetition_penalty": 1.1,
     "n_vq": 24,
 }
 

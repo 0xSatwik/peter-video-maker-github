@@ -1,0 +1,52 @@
+Here are 4 different preset combinations you can try in your Google Colab Gradio UI. 
+You can copy these settings into the sliders shown in your screenshot to find the perfect Peter voice.
+
+Once you test these and find the one you like best, just tell me which Preset # won, and I will update the code with those exact numbers!
+
+---
+
+### PRESET 1: "The Perfect Replica" (Highly Recommended)
+This is the safest bet for zero-shot Voice Cloning. It locks the AI closely to your 10-second reference file.
+- **Text Temp:** 0.7
+- **Text Top-P:** 0.9
+- **Text Top-K:** 40
+- **Audio Temp:** 0.6     (Low audio temp keeps the voice sounding identical to the reference)
+- **Audio Top-P:** 0.8
+- **Audio Top-K:** 40
+- **Rep Penalty:** 1.25
+
+---
+
+### PRESET 2: "The Screenshot Settings" (Expressive)
+These are the settings from your screenshot. They allow the AI to be quite expressive, though the voice might fluctuate slightly.
+- **Text Temp:** 1.7      (Very high! Makes the delivery very dramatic)
+- **Text Top-P:** 1.0
+- **Text Top-K:** 50
+- **Audio Temp:** 0.55    (Good, stable value)
+- **Audio Top-P:** 0.8
+- **Audio Top-K:** 65
+- **Rep Penalty:** 1.25
+
+---
+
+### PRESET 3: "Ultra Strict" (No Emotion)
+Use this only if Preset 1 and 2 are still "hallucinating" or changing voices. This forces the model to mathematically clone the audio but might sound a bit robotic.
+- **Text Temp:** 0.5
+- **Text Top-P:** 0.7
+- **Text Top-K:** 20
+- **Audio Temp:** 0.4     (Extremely restricted)
+- **Audio Top-P:** 0.7
+- **Audio Top-K:** 20
+- **Rep Penalty:** 1.4
+
+---
+
+### PRESET 4: "Storyteller" (Dynamic & Natural)
+If you want Peter to sound like he's telling a great, animated story and you don't mind if the exact voice pitch fluctuates slightly, use this.
+- **Text Temp:** 1.2
+- **Text Top-P:** 0.9
+- **Text Top-K:** 50
+- **Audio Temp:** 0.75
+- **Audio Top-P:** 0.9
+- **Audio Top-K:** 50
+- **Rep Penalty:** 1.15

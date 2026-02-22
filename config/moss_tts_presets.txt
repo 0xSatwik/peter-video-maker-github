@@ -1,0 +1,63 @@
+# MOSS-TTS 1.7B Parameter Testing Presets
+Test these values in the Gradio Web UI with your new 10-second Peter voice clip.
+
+--------------------------------------------------
+PRESET 1: "The Golden Mean" (Balanced & Stable)
+*Best for: Natural conversation, good emotion, very low chance of artifacts.*
+
+Temperature (text): 0.7
+Top P (text): 0.9
+Top K (text): 40
+Temperature (audio): 0.7
+Top P (audio): 0.85
+Top K (audio): 40
+Repetition Penalty: 1.15
+
+--------------------------------------------------
+PRESET 2: "Highly Expressive" (More Emotion)
+*Best for: Shouting, laughing, highly dynamic scripts (like Episode 01).*
+*Warning: Higher chance of stuttering or sudden pitch changes.*
+
+Temperature (text): 0.85
+Top P (text): 0.95
+Top K (text): 50
+Temperature (audio): 0.85
+Top P (audio): 0.95
+Top K (audio): 50
+Repetition Penalty: 1.2
+
+--------------------------------------------------
+PRESET 3: "Ultra-Strict" (Flat & Perfect Clone)
+*Best for: Narrating long paragraphs calmly (like the Crypto script).*
+*Warning: Can sound slightly robotic or lose human inflection.*
+
+Temperature (text): 0.4
+Top P (text): 0.7
+Top K (text): 20
+Temperature (audio): 0.4
+Top P (audio): 0.7
+Top K (audio): 20
+Repetition Penalty: 1.3
+
+--------------------------------------------------
+PRESET 4: "MOSS Default" (The Baseline)
+*Best for: Comparing your results against the API's default assumptions.*
+
+Temperature (text): 0.7
+Top P (text): 0.9
+Top K (text): 40
+Temperature (audio): 0.95
+Top P (audio): 0.9
+Top K (audio): 40
+Repetition Penalty: 1.1
+
+--------------------------------------------------
+HOW TO TEST:
+1. Open your Colab Gradio Link.
+2. Upload your perfect 10-second `peter-vocie.mp3`.
+3. Paste a single line of script (e.g., "It’s a massacre, Stewie! Since January, Bitcoin has plummeted.")
+4. Enter the parameters from one preset above.
+5. Generate and listen.
+6. Swap to the next preset and generate again.
+
+Once you find the one that sounds exactly like Peter every time, let me know which Preset number it is (or the specific numbers), and I will lock them into the Python code!

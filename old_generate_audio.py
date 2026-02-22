@@ -10,20 +10,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from gradio_client import Client, handle_file
 
 COLAB_URL = os.environ.get('COLAB_URL', '')
-PARALLEL_WORKERS = 1   # Sequential: gives 100% GPU to each clip (matches web UI quality)
+PARALLEL_WORKERS = 5
 MAX_RETRIES = 2
 
-# Yesterday's Proven Settings — consistent voice cloning (DO NOT CHANGE)
+# High Quality (24 RVQ) preset — strictly tuned to prevent hallucination (laughing/stuttering)
 HIGH_QUALITY = {
     "max_new_tokens": 2000,
-    "speed": 1.1,
-    "text_temp": 0.7,
+    "speed": 1.1,                 # 1.1 is slightly faster and forces a tighter, consistent cadence
+    "text_temp": 0.7,             # Lowered from 1.5 -> stops the model from creatively "laughing"
     "text_top_p": 0.9,
     "text_top_k": 40,
-    "audio_temp": 0.8,
+    "audio_temp": 0.8,            # Lowered from 0.95 -> stabilizes the acoustic output
     "audio_top_p": 0.9,
     "audio_top_k": 40,
-    "audio_repetition_penalty": 1.3,
+    "audio_repetition_penalty": 1.3, # Increased from 1.1 -> strictly forbids repeating "which is it"
     "n_vq": 24,
 }
 
@@ -47,21 +47,15 @@ def generate_one(client, text, speaker, output_path, index, total):
         print(f"  ⚠️  [{index+1}/{total}] No voice ref for '{speaker}', using default voice")
         voice_ref = None
 
-    # Convert reference MP3 to WAV (lossless) to prevent quality loss during upload
-    wav_ref = None
-    if voice_ref:
-        wav_ref = convert_to_wav(voice_ref)
-
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             start = time.time()
             print(f"  🎤  [{index+1}/{total}] Generating ({speaker.upper()}): \"{text[:50]}...\"")
 
             # Call the Gradio generate_speech function
-            ref_file = wav_ref or voice_ref
             result = client.predict(
                 text,                                           # text input
-                handle_file(ref_file) if ref_file else None,    # reference audio (lossless WAV)
+                handle_file(voice_ref) if voice_ref else None,  # reference audio
                 HIGH_QUALITY["max_new_tokens"],
                 HIGH_QUALITY["speed"],
                 HIGH_QUALITY["text_temp"],
@@ -101,26 +95,8 @@ def generate_one(client, text, speaker, output_path, index, total):
     return False
 
 
-def convert_to_wav(audio_path: str) -> str:
-    """Convert reference audio to lossless WAV to prevent quality loss during upload."""
-    wav_path = audio_path.rsplit('.', 1)[0] + '_ref.wav'
-    if os.path.exists(wav_path):
-        return wav_path
-    try:
-        import subprocess
-        subprocess.run(
-            ['ffmpeg', '-y', '-i', audio_path, '-acodec', 'pcm_s16le', '-ar', '24000', wav_path],
-            check=True, capture_output=True
-        )
-        print(f"   🔄 Converted {audio_path} → {wav_path} (lossless)")
-        return wav_path
-    except Exception as e:
-        print(f"   ⚠️ WAV conversion failed ({e}), using original file")
-        return audio_path
-
-
-def preprocess_text(text: str) -> str:
-    """Clean text for TTS — sends text exactly as written (matching web UI behavior)."""
+def preprocess_text(text):
+    """Clean text for TTS to prevent pronunciation issues."""
     import re
     
     # Remove multiple spaces
@@ -128,6 +104,10 @@ def preprocess_text(text: str) -> str:
     
     # Add space after punctuation if missing
     text = re.sub(r'([.,!?])([A-Za-z])', r'\1 \2', text)
+    
+    # For very short phrases, add context padding (helps MOSS-TTS enunciate)
+    if len(text.split()) <= 3:
+        text = f"... {text} ..."
         
     return text.strip()
 
@@ -138,12 +118,8 @@ def parse_script(script_path):
     with open(script_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
-            # Skip empty lines, comments, and common header text
             if not line or line.startswith('#'):
                 continue
-            if line.lower().startswith('format:') or line.lower().startswith('family guy'):
-                continue
-                
             parts = line.split('|')
             if len(parts) == 3:
                 speaker = parts[0].strip().lower()

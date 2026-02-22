@@ -16,7 +16,7 @@ MAX_RETRIES = 2
 # User-Vetted Perfect Preset (Matches Colab Screenshot)
 HIGH_QUALITY = {
     "max_new_tokens": 2850,
-    "speed": 1.25,                # Updated to 1.25x faster
+    "speed": 1.4,                 # Updated to 1.4x faster
     "text_temp": 1.5,
     "text_top_p": 1.0,
     "text_top_k": 50,
@@ -24,7 +24,7 @@ HIGH_QUALITY = {
     "audio_top_p": 0.95,
     "audio_top_k": 50,
     "audio_repetition_penalty": 1.1,
-    "n_vq": 24,
+    "n_vq": 32,                   # Max quality RVQ layers
 }
 
 # Voice reference files

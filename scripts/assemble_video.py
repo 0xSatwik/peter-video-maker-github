@@ -8,11 +8,15 @@ import shutil
 
 # === CONSTANTS ===
 CANVAS_W, CANVAS_H = 1080, 1920
-CHAR_HEIGHT = 750       # 15% bigger characters (was 650) — large cinematic look
+CHAR_HEIGHT_BASE = 750  # Base character height
+CHAR_SCALES = {
+    'peter': 1.10,      # Peter size +10%
+    'stewie': 0.95,     # Stewie size -5%
+}
 GAP_SECONDS = 0.3
 FPS = 24
-CAPTION_Y = 700         # Center of screen for captions (above characters)
-CAPTION_FONT_SIZE = 68  # Bold, large, readable on mobile (slightly smaller to fit with wrapping)
+CAPTION_Y = 834         # Moved down ~7% (from 700 to 834)
+CAPTION_FONT_SIZE = 68  # Bold, large, readable on mobile
 CAPTION_PADDING = 50    # Horizontal padding on each side to prevent text going off-screen
 CHUNK_SIZE = 4          # ~4 words per caption line (short punchy chunks)
 LINE_SPACING = 12       # Extra pixels between wrapped caption lines
@@ -23,12 +27,13 @@ def log(msg):
 
 
 def find_font():
-    """Find the best bold font available on the system."""
+    """Find the best thick/geometric font available on the system."""
+    # Frick/Komika/TheBoldFont style geometric thick fonts
     candidates = [
+        '/usr/share/fonts/truetype/montserrat/Montserrat-Black.ttf',      # Best match for Frick-style reel fonts
         '/usr/share/fonts/truetype/montserrat/Montserrat-ExtraBold.ttf',
         '/usr/share/fonts/truetype/montserrat/Montserrat-Bold.ttf',
-        '/usr/share/fonts/truetype/roboto/unhinted/RobotoCondensed-Bold.ttf',
-        '/usr/share/fonts/truetype/roboto/hinted/RobotoCondensed-Bold.ttf',
+        '/usr/share/fonts/truetype/roboto/hinted/Roboto-Black.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
     ]
@@ -57,10 +62,11 @@ def load_character(name):
                 black_mask = (r < 30) & (g < 30) & (b < 30)
                 data[black_mask, 3] = 0
 
-            # Scale to big character height
-            scale = CHAR_HEIGHT / img.height
+            # Scale to specific character height
+            target_h = int(CHAR_HEIGHT_BASE * CHAR_SCALES.get(name, 1.0))
+            scale = target_h / img.height
             new_w = int(img.width * scale)
-            img_resized = Image.fromarray(data).resize((new_w, CHAR_HEIGHT), Image.LANCZOS)
+            img_resized = Image.fromarray(data).resize((new_w, target_h), Image.LANCZOS)
             return img_resized
             
     return None
@@ -288,6 +294,10 @@ def assemble():
         # --- Composite character ---
         if speaker and speaker in characters:
             char_img = characters[speaker]
+            
+            # Recalculate dynamic Y position based on this specific character's height
+            char_y = CANVAS_H - char_img.height + 40  # Anchor bottom +40px cutoff
+            
             if speaker == 'peter':
                 cx = 30  # Left side
             else:

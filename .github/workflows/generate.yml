@@ -39,7 +39,8 @@ jobs:
             fonts-noto \
             fonts-roboto \
             fonts-open-sans \
-            fonts-montserrat
+            fonts-montserrat \
+            fonts-cantarell
       
       - name: Fix ImageMagick security policy
         run: |

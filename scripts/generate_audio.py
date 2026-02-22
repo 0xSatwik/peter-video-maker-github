@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from gradio_client import Client, handle_file
 
 COLAB_URL = os.environ.get('COLAB_URL', '')
-PARALLEL_WORKERS = 5
+PARALLEL_WORKERS = 1   # Sequential: gives 100% GPU to each clip (matches web UI quality)
 MAX_RETRIES = 2
 
 # User-Vetted Perfect Preset (Matches Colab Screenshot)
@@ -47,15 +47,21 @@ def generate_one(client, text, speaker, output_path, index, total):
         print(f"  ⚠️  [{index+1}/{total}] No voice ref for '{speaker}', using default voice")
         voice_ref = None
 
+    # Convert reference MP3 to WAV (lossless) to prevent quality loss during upload
+    wav_ref = None
+    if voice_ref:
+        wav_ref = convert_to_wav(voice_ref)
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             start = time.time()
             print(f"  🎤  [{index+1}/{total}] Generating ({speaker.upper()}): \"{text[:50]}...\"")
 
             # Call the Gradio generate_speech function
+            ref_file = wav_ref or voice_ref
             result = client.predict(
                 text,                                           # text input
-                handle_file(voice_ref) if voice_ref else None,  # reference audio
+                handle_file(ref_file) if ref_file else None,    # reference audio (lossless WAV)
                 HIGH_QUALITY["max_new_tokens"],
                 HIGH_QUALITY["speed"],
                 HIGH_QUALITY["text_temp"],
@@ -95,8 +101,26 @@ def generate_one(client, text, speaker, output_path, index, total):
     return False
 
 
-def preprocess_text(text):
-    """Clean text for TTS to prevent pronunciation issues."""
+def convert_to_wav(audio_path: str) -> str:
+    """Convert reference audio to lossless WAV to prevent quality loss during upload."""
+    wav_path = audio_path.rsplit('.', 1)[0] + '_ref.wav'
+    if os.path.exists(wav_path):
+        return wav_path
+    try:
+        import subprocess
+        subprocess.run(
+            ['ffmpeg', '-y', '-i', audio_path, '-acodec', 'pcm_s16le', '-ar', '24000', wav_path],
+            check=True, capture_output=True
+        )
+        print(f"   🔄 Converted {audio_path} → {wav_path} (lossless)")
+        return wav_path
+    except Exception as e:
+        print(f"   ⚠️ WAV conversion failed ({e}), using original file")
+        return audio_path
+
+
+def preprocess_text(text: str) -> str:
+    """Clean text for TTS — sends text exactly as written (matching web UI behavior)."""
     import re
     
     # Remove multiple spaces
@@ -104,10 +128,6 @@ def preprocess_text(text):
     
     # Add space after punctuation if missing
     text = re.sub(r'([.,!?])([A-Za-z])', r'\1 \2', text)
-    
-    # For very short phrases, add context padding (helps MOSS-TTS enunciate)
-    if len(text.split()) <= 3:
-        text = f"... {text} ..."
         
     return text.strip()
 

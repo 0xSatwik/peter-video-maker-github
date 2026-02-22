@@ -201,8 +201,6 @@ def assemble():
             characters[name] = img
             log(f"   ✅ {name}: {img.width}x{img.height}")
     
-    # Position characters at the very bottom (partially cut off for cinematic look)
-    char_y = CANVAS_H - CHAR_HEIGHT + 40  # +40 means bottom 40px is cut off
 
     # --- Load Font for Captions ---
     log("\n🔤 LOADING CAPTION FONT...")

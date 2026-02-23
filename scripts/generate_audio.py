@@ -15,15 +15,15 @@ MAX_RETRIES = 2
 
 # Yesterday's Proven Settings — consistent voice cloning (DO NOT CHANGE)
 HIGH_QUALITY = {
-    "max_new_tokens": 2000,
-    "speed": 1.1,
-    "text_temp": 0.7,
-    "text_top_p": 0.9,
-    "text_top_k": 40,
-    "audio_temp": 0.8,
-    "audio_top_p": 0.9,
-    "audio_top_k": 40,
-    "audio_repetition_penalty": 1.3,
+    "max_new_tokens": 2500,
+    "speed": 1,
+    "text_temp": 1.5,
+    "text_top_p": 1,
+    "text_top_k": 50,
+    "audio_temp": 1.05,
+    "audio_top_p": 0.95,
+    "audio_top_k": 50,
+    "audio_repetition_penalty": 1.1,
     "n_vq": 24,
 }
 

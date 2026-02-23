@@ -1,9 +1,7 @@
-# Family Guy Shorts - Episode 01 (Updated Crypto)
-# Format: SPEAKER|TAGS|LYRICS
-PETER|male, deep, speech, clear, narrative|If you're still waiting for Bitcoin to hit a hundred-k before you sell, stop what you’re doing because you’re about to lose everything. It is February 22nd, 2026, and the market just pulled the rug on the biggest bull run in history.
-STEWIE|male, high, speech, clear, british|Peter, you look like you just saw a ghost, or perhaps just your bank statement. Has the digital gold finally turned into digital dirt?
-PETER|male, deep, speech, clear, excited|It’s a massacre, Stewie! Since January, Bitcoin has plummeted from eighty-four thousand dollars all the way down to sixty-eight thousand today. We’re officially trading below the cost of production, which is eighty-seven grand, meaning the miners are literally paying to stay alive!
-STEWIE|male, high, speech, clear, skeptical|So, the "store of value" is currently storing nothing but disappointment? What about Ethereum? Surely the "future of finance" isn't underwater too.
-PETER|male, deep, speech, clear, confident|ETH is a disaster! It’s down sixty percent from its August peak, struggling to hold two thousand bucks while the Fear and Greed Index is at a fourteen. That is "Extreme Fear," Stewie. We haven't seen blood in the streets like this since the great 2021 China ban.
-STEWIE|male, high, speech, clear, curious|So we’re just supposed to sit here and hold these heavy bags of nothing while Trump announces more global tariffs on Truth Social?
-PETER|male, deep, speech, clear, final|Exactly. The "Deleveraging Phase" is here and it’s hungry. If you want my real-time 2026 survival map and the list of AI tokens actually showing green, comment ALPHA and I'll DM you the link. Or just stay broke while the institutions eat your lunch, you lazy trolls.
+Family Guy Shorts - Episode 02 (Relationship Workflow)
+Format: SPEAKER|TAGS|LYRICS
+PETER|male, deep, speech, clear, excited|Stewie! I got tired of my girlfriend shouting at me for not sending I miss you messages, so I built this workflow that automates everything.
+STEWIE|male, high, speech, clear, british|You've automated romantic communication? The man who thinks I love you is just three random words is now engineering relationships through workflows?
+PETER|male, deep, speech, clear, confident|Yes, and it sends I miss you every single hour. Then it remembers her mother, father, even her dad's birthday, so she has no reason to complain. Last but not least, if you're tired of talking to her, you can replace yourself with this AI agent that has access to all your previous chats. Your messages will sound just like you.
+STEWIE|male, high, speech, clear, skeptical|Replace yourself? You've built a digital boyfriend substitute trained on your conversation history? That's not automation, that's relationship fraud.
+PETER|male, deep, speech, clear, final|Exactly. This workflow will make you boyfriend material. If you want this for your girlfriend, just go through my description. I have shared there.

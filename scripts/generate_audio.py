@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from gradio_client import Client, handle_file
 
 COLAB_URL = os.environ.get('COLAB_URL', '')
+PETER_VOICE_REF = os.environ.get('PETER_VOICE_REF', '').strip()
 PARALLEL_WORKERS = 1   # Sequential: gives 100% GPU to each clip (matches web UI quality)
 MAX_RETRIES = 2
 
@@ -33,6 +34,10 @@ VOICE_REFS = {
     "peter": ["assets/peter-voice.mp3", "assets/peter-vocie.mp3"],
     "stewie": ["assets/Stewies-voice.mp3"],
 }
+
+if PETER_VOICE_REF:
+    # User-selected Peter voice file from workflow input.
+    VOICE_REFS["peter"] = [PETER_VOICE_REF]
 
 
 def resolve_voice_ref(speaker: str):
@@ -188,6 +193,8 @@ def main():
     print(f"📡 Colab URL: {COLAB_URL}")
     print(f"👷 Parallel workers: {PARALLEL_WORKERS}")
     print(f"🎛️  Quality: High (24 RVQ)")
+    if PETER_VOICE_REF:
+        print(f"🎙️  Peter voice override: {PETER_VOICE_REF}")
     print()
 
     # Connect to Colab Gradio

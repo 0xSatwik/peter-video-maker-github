@@ -15,7 +15,7 @@ CHAR_SCALES = {
 }
 GAP_SECONDS = 0.3
 FPS = 24
-CAPTION_Y = 834         # Moved down ~7% (from 700 to 834)
+CAPTION_Y = 930         # Moved down 5% of frame height (96px lower than 834)
 CAPTION_FONT_SIZE = 68  # Bold, large, readable on mobile
 CAPTION_PADDING = 50    # Horizontal padding on each side to prevent text going off-screen
 CHUNK_SIZE = 4          # ~4 words per caption line (short punchy chunks)

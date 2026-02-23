@@ -6,6 +6,14 @@ on:
       colab_url:
         description: 'Colab Gradio URL (e.g. https://xxxxx.gradio.live)'
         required: true
+      peter_voice_ref:
+        description: 'Peter voice reference file'
+        required: true
+        default: 'assets/peter-voice.mp3'
+        type: choice
+        options:
+          - assets/peter-voice.mp3
+          - assets/perter10seonds.wav
       script_file:
         description: 'Script file path'
         required: false
@@ -58,6 +66,7 @@ jobs:
       - name: Generate Voice Audio (via Colab MOSS-TTS)
         env:
           COLAB_URL: ${{ github.event.inputs.colab_url }}
+          PETER_VOICE_REF: ${{ github.event.inputs.peter_voice_ref }}
           SCRIPT_PATH: ${{ github.event.inputs.script_file }}
         run: python scripts/generate_audio.py
       
@@ -121,4 +130,5 @@ jobs:
           echo "- **Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Script:** ${{ github.event.inputs.script_file }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Colab:** ${{ github.event.inputs.colab_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Peter Voice Ref:** ${{ github.event.inputs.peter_voice_ref }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Format:** 1080x1920 (Instagram Reel)" >> $GITHUB_STEP_SUMMARY

@@ -1,16 +1,7 @@
-# Family Guy Shorts - Episode 01 (Updated)
-# Format: SPEAKER|TAGS|LYRICS
-
-PETER|male, deep, speech, clear, narrative|If you're still paying for AI voice cloners like ElevenLabs, you're literally burning money. Instead, use this one secret open-source model.
-
-STEWIE|male, high, speech, clear, british|Peter, that sounds illegal or genius. Which is it?
-
-PETER|male, deep, speech, clear, excited|Genius. It's called MOSS TTS. It gives you production-grade cloning for free, no credit card drama. It even gives you high-fidelity, zero-shot cloning straight from a Google Colab T4 GPU, including a 5-second sample to full voice clone.
-
-STEWIE|male, high, speech, clear, skeptical|So, real cloning, not some toy demo?
-
-PETER|male, deep, speech, clear, confident|Real cloning. It acts like a beast. It routes your audio through a specialized architecture. You can hit long-form dialogue, fast conversational models, and high-stability renders, all with zero cost.
-
-STEWIE|male, high, speech, clear, curious|So I can prototype, build, and clone voices without paying a cent?
-
-PETER|male, deep, speech, clear, final|Exactly. Same quality, better workflows, zero cost. If you want the link and the English tutorial, comment VOICE and I'll DM it to you. Or check the description if you're on YouTube, you lazy trolls.
+Family Guy Shorts - Episode 02 (Relationship Workflow)
+Format: SPEAKER|TAGS|LYRICS
+PETER|male, deep, speech, clear, excited|Stewie! I got tired of my girlfriend shouting at me for not sending I miss you messages, so I built this workflow that automates everything.
+STEWIE|male, high, speech, clear, british|You've automated romantic communication? The man who thinks I love you is just three random words is now engineering relationships through workflows?
+PETER|male, deep, speech, clear, confident|Yes, and it sends I miss you every single hour. Then it remembers her mother, father, even her dad's birthday, so she has no reason to complain. Last but not least, if you're tired of talking to her, you can replace yourself with this AI agent that has access to all your previous chats. Your messages will sound just like you.
+STEWIE|male, high, speech, clear, skeptical|Replace yourself? You've built a digital boyfriend substitute trained on your conversation history? That's not automation, that's relationship fraud.
+PETER|male, deep, speech, clear, final|Exactly. This workflow will make you boyfriend material. If you want this for your girlfriend, just go through my description. I have shared there.

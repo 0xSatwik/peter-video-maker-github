@@ -29,7 +29,7 @@ HIGH_QUALITY = {
 
 # Voice reference files
 VOICE_REFS = {
-    "peter": "assets/peter-vocie.mp3",
+    "peter": "assets/peter-voice.mp3",
     "stewie": "assets/Stewies-voice.mp3",
 }
 

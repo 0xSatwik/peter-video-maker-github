@@ -27,11 +27,23 @@ HIGH_QUALITY = {
     "n_vq": 24,
 }
 
-# Voice reference files
+# Voice reference files.
+# Keep both spellings for backward compatibility, but prefer the correct filename first.
 VOICE_REFS = {
-    "peter": "assets/peter-vocie.mp3",
-    "stewie": "assets/Stewies-voice.mp3",
+    "peter": ["assets/peter-voice.mp3", "assets/peter-vocie.mp3"],
+    "stewie": ["assets/Stewies-voice.mp3"],
 }
+
+
+def resolve_voice_ref(speaker: str):
+    """Resolve the first existing reference file for a known speaker."""
+    candidates = VOICE_REFS.get(speaker)
+    if not candidates:
+        return None
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
 
 
 def generate_one(client, text, speaker, output_path, index, total):
@@ -42,10 +54,13 @@ def generate_one(client, text, speaker, output_path, index, total):
         print(f"  ⏭️  [{index+1}/{total}] SKIP (already exists): {output_path}")
         return True
 
-    voice_ref = VOICE_REFS.get(speaker)
-    if not voice_ref or not os.path.exists(voice_ref):
+    voice_ref = resolve_voice_ref(speaker)
+    if speaker in VOICE_REFS and not voice_ref:
+        print(f"  ❌  [{index+1}/{total}] Missing voice ref for '{speaker}'. Checked: {VOICE_REFS[speaker]}")
+        print("      Refusing to fallback to default voice for known characters.")
+        return False
+    if not voice_ref:
         print(f"  ⚠️  [{index+1}/{total}] No voice ref for '{speaker}', using default voice")
-        voice_ref = None
 
     # Convert reference MP3 to WAV (lossless) to prevent quality loss during upload
     wav_ref = None
@@ -56,6 +71,8 @@ def generate_one(client, text, speaker, output_path, index, total):
         try:
             start = time.time()
             print(f"  🎤  [{index+1}/{total}] Generating ({speaker.upper()}): \"{text[:50]}...\"")
+            if voice_ref:
+                print(f"      Voice ref: {voice_ref}")
 
             # Call the Gradio generate_speech function
             ref_file = wav_ref or voice_ref
@@ -190,9 +207,12 @@ def main():
     print(f"📝 Dialogue lines: {len(lines)}")
 
     # Check voice references
-    for name, path in VOICE_REFS.items():
-        exists = "✅" if os.path.exists(path) else "❌"
-        print(f"🎙️  {name} voice ref: {exists} {path}")
+    for name, paths in VOICE_REFS.items():
+        found = next((p for p in paths if os.path.exists(p)), None)
+        if found:
+            print(f"🎙️  {name} voice ref: ✅ {found}")
+        else:
+            print(f"🎙️  {name} voice ref: ❌ missing (checked: {paths})")
     print()
 
     os.makedirs('audio', exist_ok=True)

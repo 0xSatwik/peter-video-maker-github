@@ -36,7 +36,7 @@ Uses **MOSS-TTS 1.7B** for zero-shot voice cloning on Google Colab (free), and *
 │   ├── peter.png               # Peter Griffin character image
 │   ├── stewie.png              # Stewie Griffin character image
 │   ├── minecraft_bg.mp4        # Background video
-│   ├── peter-vocie.mp3         # Peter voice reference for cloning
+│   ├── peter-voice.mp3         # Peter voice reference for cloning
 │   └── Stewies-voice.mp3       # Stewie voice reference for cloning
 ├── config/scripts/             # Dialogue scripts
 │   └── EPISODE_01.txt          # Example episode script

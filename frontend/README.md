@@ -18,6 +18,8 @@ progress + elapsed time survive refresh (job id in localStorage, state in D1).
    - `GEMINI_PROXY` — `https://gemini-web-proxy.dipteshray7.workers.dev/v1/chat/completions`
    - `GEMINI_MODEL` — `gemini-3.7-flash`
    - `CALLBACK_SECRET` — random string, also added as GitHub repo secret
+   - `MONID_KEY` — monid API key (enables live-web research agent)
+   - `MONID_BASE` — optional, defaults to `https://api.monid.ai/v1`
 5. **GitHub repo secrets** (repo Settings → Secrets → Actions):
    - `KAGGLE_USERNAME`, `KAGGLE_KEY` (Kaggle auto TTS)
    - `CALLBACK_URL` — `https://<your-pages-domain>/api/complete`

@@ -12,3 +12,6 @@ button.ghost{background:transparent;border:1px solid #666}
 .bar{height:12px;background:#111;border-radius:6px;overflow:hidden}
 #barFill{height:100%;width:2%;background:#7c5cff;transition:width .5s}
 pre{white-space:pre-wrap;background:#111;padding:10px;border-radius:8px;font-size:12px;max-height:220px;overflow:auto}
+textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:13px;resize:vertical}
+.row input#instruction{flex:1}
+#draftState{font-size:12px;opacity:.7}

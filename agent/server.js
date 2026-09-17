@@ -128,11 +128,11 @@ async function searchTinyfish(q) {
       provider: "tinyfish", endpoint: "/search",
       input: { queryParams: { query: q, domain_type: "news", recency_minutes: 10080, purpose: "fresh facts for a comedy script" } },
     });
-    const items = s?.results || s?.data?.results || s || [];
-    const urls = (Array.isArray(items) ? items : []).slice(0, 3)
-      .map((it) => it.url || it.link).filter(Boolean);
-    console.log(`[search] "${q}" -> ${urls.length} urls`);
-    return urls;
+    const items = (Array.isArray(s?.results) ? s.results : []).slice(0, 3)
+      .map((it) => ({ url: it.url || it.link, title: it.title, snippet: it.snippet, date: it.date }))
+      .filter((it) => it.url);
+    console.log(`[search] "${q}" -> ${items.length} results`);
+    return items;
   } catch (e) {
     console.log(`[search] "${q}" failed: ${e.message}`);
     return [];
@@ -140,20 +140,22 @@ async function searchTinyfish(q) {
 }
 
 async function fetchPages(urls) {
-  if (!urls.length) return "";
-  try {
-    const fetched = await monid({
-      provider: "tinyfish", endpoint: "/fetch",
-      input: { body: { urls, format: "markdown", purpose: "fresh facts for a comedy script" } },
-    });
-    const pages = fetched?.results || fetched?.data?.results || [];
-    let digest = "";
-    for (const p of Array.isArray(pages) ? pages : []) {
-      const t = (p.text || p.content || "").slice(0, 2500);
-      if (t) digest += `URL: ${p.url || "?"}\n${t}\n---\n`;
-    }
-    return digest.slice(0, 14000);
-  } catch { return ""; }
+  let digest = "";
+  // batches of 2 urls; one failed batch does not kill the rest
+  for (let i = 0; i < urls.length; i += 2) {
+    const batch = urls.slice(i, i + 2);
+    try {
+      const fetched = await monid({
+        provider: "tinyfish", endpoint: "/fetch",
+        input: { body: { urls: batch, format: "markdown", purpose: "fresh facts for a comedy script" } },
+      });
+      for (const p of Array.isArray(fetched?.results) ? fetched.results : []) {
+        const t = (p.text || p.content || p.markdown || "").slice(0, 2500);
+        if (t) digest += `URL: ${p.url || "?"}\n${t}\n---\n`;
+      }
+    } catch (e) { console.log("[fetch] batch failed:", e.message); }
+  }
+  return digest.slice(0, 14000);
 }
 
 // Full research pipeline: plan -> parallel search -> fetch -> extract.
@@ -169,20 +171,23 @@ async function research(topic, steps) {
   steps.push("planned " + queries.length + " searches");
 
   // 2. SEARCH (parallel live web)
-  const searches = await Promise.allSettled(
-    queries.map((q) => searchTinyfish(q))
-  );
-  const urls = [];
+  const searches = await Promise.allSettled(queries.map((q) => searchTinyfish(q)));
+  const items = [];
   for (const s of searches)
-    for (const u of s.status === "fulfilled" ? s.value : [])
-      if (u && urls.length < MAX_SEARCH_URLS && !urls.includes(u)) urls.push(u);
-  steps.push("searched " + queries.length + " queries -> " + urls.length + " urls");
-  if (!urls.length) { steps.push("no search results"); return ""; }
+    if (s.status === "fulfilled")
+      for (const it of s.value)
+        if (it.url && items.length < MAX_SEARCH_URLS && !items.some((x) => x.url === it.url)) items.push(it);
+  steps.push("searched " + queries.length + " queries -> " + items.length + " urls");
+  if (!items.length) { steps.push("no search results"); return ""; }
 
-  // 3. FETCH
-  const digest = await fetchPages(urls);
-  steps.push("fetched " + (digest ? "pages ok" : "pages failed"));
-  if (!digest) return "";
+  // 3. FETCH (batched; fall back to snippets if all batches fail)
+  const urls = items.map((x) => x.url);
+  let digest = await fetchPages(urls);
+  if (!digest) {
+    steps.push("page fetch failed, using search snippets");
+    digest = items.map((it) => `URL: ${it.url} (${it.date || "?"})\n${it.title}\n${it.snippet}\n---\n`).join("").slice(0, 8000);
+  }
+  steps.push("fetched " + (digest ? "pages ok" : "snippets only"));
 
   // 4. EXTRACT (Gemini distills fresh facts)
   let facts = "";
@@ -191,7 +196,6 @@ async function research(topic, steps) {
   } catch { facts = digest.slice(0, 6000); }
   steps.push("facts extracted (" + facts.length + " chars)");
   return facts;
-}
 
 const validLines = (raw) =>
   raw.split("\n").map((l) => l.trim()).filter((l) => /^(peter|stewie)\|[^|]+\|[^|]+$/i.test(l));

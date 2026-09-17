@@ -5,10 +5,20 @@ const api = async (path, opts = {}) => {
   if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
   return j;
 };
+const agent = async (path, body) => {
+  const r = await fetch((localStorage.getItem("pv_agent") || "") + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-access-key": key() },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+};
 const key = () => localStorage.getItem("pv_key") || "";
 const headers = () => ({ "Content-Type": "application/json", "x-access-key": key() });
 
-let timer = null, poller = null, startedAt = 0, doneAt = 0;
+let timer = null, poller = null, startedAt = 0, doneAt = 0, agentToken = null;
 
 function fmt(ms) {
   const s = Math.floor(ms / 1000);
@@ -22,9 +32,10 @@ function stagePct(stage) {
   return m[stage] ?? 10;
 }
 
+function show(el, on) { el.classList.toggle("hidden", !on); }
+
 async function showJob(id) {
-  $("app").classList.add("hidden");
-  $("job").classList.remove("hidden");
+  show($("app"), false); show($("draftCard"), false); show($("job"), true);
   $("jobId").textContent = id.slice(0, 8);
   clearInterval(poller); clearInterval(timer);
   const poll = async () => {
@@ -36,7 +47,7 @@ async function showJob(id) {
       if (j.script) $("script").textContent = j.script;
       if (j.status === "done") {
         clearInterval(poller); tick();
-        if (j.temp_url) { $("dl").href = j.temp_url; $("dl").classList.remove("hidden"); }
+        if (j.temp_url) { $("dl").href = j.temp_url; show($("dl"), true); }
       }
       tick();
     } catch (e) { $("stage").textContent = "poll error: " + e.message; }
@@ -48,51 +59,107 @@ async function showJob(id) {
 
 $("unlock").onclick = async () => {
   const k = $("key").value.trim();
+  const a = $("agentUrl").value.trim().replace(/\/$/, "");
+  if (a) localStorage.setItem("pv_agent", a);
   if (!k) return;
   localStorage.setItem("pv_key", k);
-  try {
-    await api("/api/status?id=ping", { headers: headers() });
-  } catch (e) { /* ping validates key; ignore job error below */ }
-  // validate by attempting a lightweight authed call
-  try {
-    await api("/api/status?id=", { headers: headers() });
-  } catch (e) {
+  try { await api("/api/status?id=", { headers: headers() }); }
+  catch (e) {
     if (e.message === "unauthorized") { $("gateMsg").textContent = "Wrong key."; return; }
   }
   $("gate").classList.add("hidden");
-  $("app").classList.remove("hidden");
+  show($("app"), true);
   const last = localStorage.getItem("pv_job");
   if (last) showJob(last);
+  else if (localStorage.getItem("pv_draft")) restoreDraft();
 };
 
-$("go").onclick = async () => {
+$("draft").onclick = async () => {
   const topic = $("topic").value.trim();
   if (!topic) return;
-  $("go").disabled = true;
+  $("draft").disabled = true;
+  $("draftState").textContent = "agent researching live web...";
+  try {
+    const j = await agent("/api/plan", {
+      topic, max_tokens: parseInt($("maxtokens").value || "600", 10),
+    });
+    agentToken = j.token;
+    $("scriptBox").value = j.script;
+    $("draftState").textContent = `drafted (research: ${j.digest_chars} chars)`;
+    localStorage.setItem("pv_draft", JSON.stringify({
+      topic, script: j.script, token: j.token, state: $("draftState").textContent,
+    }));
+    show($("app"), false); show($("draftCard"), true);
+  } catch (e) { $("draftState").textContent = "failed: " + e.message; }
+  $("draft").disabled = false;
+};
+
+$("revise").onclick = async () => {
+  const instruction = $("instruction").value.trim();
+  const script = $("scriptBox").value.trim();
+  if (!instruction || !script) return;
+  $("revise").disabled = true;
+  $("draftState").textContent = "agent revising...";
+  try {
+    const j = await agent("/api/revise", { token: agentToken, instruction, script });
+    agentToken = j.token || agentToken;
+    $("scriptBox").value = j.script;
+    $("draftState").textContent = "revised";
+    localStorage.setItem("pv_draft", JSON.stringify({
+      topic: $("topic").value.trim(), script: j.script, token: agentToken, state: "revised",
+    }));
+    $("instruction").value = "";
+  } catch (e) { $("draftState").textContent = "failed: " + e.message; }
+  $("revise").disabled = false;
+};
+
+$("approve").onclick = async () => {
+  const script = $("scriptBox").value.trim();
+  const topic = $("topic").value.trim() || JSON.parse(localStorage.getItem("pv_draft") || "{}").topic;
+  if (!script || !topic) return;
+  $("approve").disabled = true;
   try {
     const j = await api("/api/generate", {
       method: "POST", headers: headers(),
-      body: JSON.stringify({ topic, max_tokens: parseInt($("maxtokens").value || "600", 10) }),
+      body: JSON.stringify({ topic, script }),
     });
     localStorage.setItem("pv_job", j.id);
+    localStorage.removeItem("pv_draft");
     startedAt = Date.now(); doneAt = 0;
     showJob(j.id);
   } catch (e) { alert("Failed: " + e.message); }
-  $("go").disabled = false;
+  $("approve").disabled = false;
 };
+
+$("back").onclick = () => {
+  show($("draftCard"), false); show($("app"), true);
+};
+
+function restoreDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem("pv_draft"));
+    if (d && d.script) {
+      $("topic").value = d.topic || "";
+      $("scriptBox").value = d.script;
+      agentToken = d.token || null;
+      $("draftState").textContent = d.state || "draft restored";
+      show($("app"), false); show($("draftCard"), true);
+    }
+  } catch { /* ignore */ }
+}
 
 $("reset").onclick = () => {
   localStorage.removeItem("pv_job");
   clearInterval(poller); clearInterval(timer);
-  $("job").classList.add("hidden");
-  $("dl").classList.add("hidden");
+  show($("job"), false); show($("dl"), false);
   $("app").classList.remove("hidden");
 };
 
-// auto-resume after refresh
 if (key()) {
   $("gate").classList.add("hidden");
-  $("app").classList.remove("hidden");
+  $("agentUrl").value = localStorage.getItem("pv_agent") || "";
+  show($("app"), true);
   const last = localStorage.getItem("pv_job");
   if (last) showJob(last);
+  else restoreDraft();
 }

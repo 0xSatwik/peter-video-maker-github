@@ -10,18 +10,22 @@ on:
   push:
     paths:
       - 'config/scripts/**'
+      - '!.github/workflows/**'
 
 jobs:
+  # De-dup: the frontend commits AUTO_* scripts AND dispatches this workflow,
+  # so the push event for AUTO_* files must not also run the job (that used to
+  # start TWO identical Actions per video). Manual EPISODE_* pushes still run.
   create-short-kaggle:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(join(github.event.commits.*.message, ' '), 'Auto script for')
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'

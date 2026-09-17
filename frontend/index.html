@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Peter Video Maker</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="wrap">
+  <h1>Peter Video Maker</h1>
+
+  <section id="gate" class="card">
+    <h2>Access key</h2>
+    <input id="key" type="password" placeholder="Enter access key" autocomplete="off" />
+    <button id="unlock">Unlock</button>
+    <p id="gateMsg" class="msg"></p>
+  </section>
+
+  <section id="app" class="card hidden">
+    <h2>New video</h2>
+    <input id="topic" type="text" placeholder="Topic, e.g. Peter discovers protein shakes" />
+    <div class="row">
+      <label>Length <input id="maxtokens" type="number" value="600" min="200" max="2000" step="50" /></label>
+      <button id="go">Generate video</button>
+    </div>
+    <p class="hint">Gemini writes the script, Kaggle clones the voices, Actions assembles the reel.</p>
+  </section>
+
+  <section id="job" class="card hidden">
+    <h2>Job <span id="jobId"></span></h2>
+    <div class="bar"><div id="barFill"></div></div>
+    <p id="stage">queued</p>
+    <p>Elapsed: <span id="elapsed">0:00</span></p>
+    <pre id="script"></pre>
+    <a id="dl" class="hidden" href="#" target="_blank" rel="noopener"><button>Download video (temp link, 24h)</button></a>
+    <p><button id="reset" class="ghost">Start new</button></p>
+  </section>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

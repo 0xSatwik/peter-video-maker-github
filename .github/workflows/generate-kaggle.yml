@@ -94,6 +94,27 @@ jobs:
           ffprobe -v error -show_entries stream=width,height -of default=noprint_wrappers=1 output/final_reel.mp4
           ls -lh output/
 
+      - name: Publish temp link + notify frontend
+        if: success()
+        env:
+          CALLBACK_URL: ${{ secrets.CALLBACK_URL }}
+          CALLBACK_SECRET: ${{ secrets.CALLBACK_SECRET }}
+          SCRIPT_PATH: ${{ github.event.inputs.script_file || 'config/scripts/EPISODE_01.txt' }}
+        run: |
+          JOB_ID=$(grep -m1 '^# JOB:' "$SCRIPT_PATH" | cut -d: -f2 | tr -d ' \r\n' || true)
+          if [ -z "$JOB_ID" ] || [ -z "$CALLBACK_URL" ]; then
+            echo "No frontend job (manual run) — skipping callback."
+            exit 0
+          fi
+          SIZE=$(stat -c%s output/final_reel.mp4)
+          echo "Uploading $SIZE bytes for job $JOB_ID"
+          RESP=$(curl -s -F "file=@output/final_reel.mp4" -F "expire=86400" https://tmpfiles.org/api/v1/upload)
+          echo "$RESP"
+          URL=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['url'])")
+          curl -s -X POST "$CALLBACK_URL" -H 'Content-Type: application/json' \
+            -d "{\"job_id\":\"$JOB_ID\",\"secret\":\"$CALLBACK_SECRET\",\"temp_url\":\"$URL\",\"status\":\"done\"}"
+          echo "Frontend notified: $URL"
+
       - name: Upload final video
         uses: actions/upload-artifact@v4
         with:

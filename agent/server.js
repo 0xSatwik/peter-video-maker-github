@@ -196,6 +196,7 @@ async function research(topic, steps) {
   } catch { facts = digest.slice(0, 6000); }
   steps.push("facts extracted (" + facts.length + " chars)");
   return facts;
+}
 
 const validLines = (raw) =>
   raw.split("\n").map((l) => l.trim()).filter((l) => /^(peter|stewie)\|[^|]+\|[^|]+$/i.test(l));

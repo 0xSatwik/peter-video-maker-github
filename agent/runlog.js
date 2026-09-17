@@ -16,10 +16,7 @@ const GH = { Authorization: "Bearer " + env.GH_PAT, Accept: "application/vnd.git
   const lr = await fetch(`https://api.github.com/repos/${repo}/actions/jobs/${jobs.jobs[0].id}/logs`, { headers: GH });
   const txt = await lr.text();
   if (txt.startsWith("<?xml")) { console.log("(logs not ready)"); process.exit(0); }
-  for (const l of txt.split("\n")) {
-    if (/fallback|OmniVoice|OK \[|DONE:|Kaggle GPU|edge-tts|GPU not attached|Device:|kernels output/i.test(l)) {
-      console.log(l.replace(/[^\x20-\x7e]/g, "").slice(0, 190));
-    }
-  }
+  const errs = txt.split("\n").filter((l) => /error|Error|Traceback|FATAL|FAIL|exited with|quota/i.test(l) && !/punycode|DEP0040|secure_node/i.test(l));
+  for (const l of errs.slice(-18)) console.log(l.replace(/[^\x20-\x7e]/g, "").slice(0, 200));
   process.exit(0);
 })().catch((e) => { console.error(e.message); process.exit(1); });

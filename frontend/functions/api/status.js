@@ -16,10 +16,14 @@ export async function onRequestGet({ request, env }) {
   try {
     const repo = env.GITHUB_REPO;
     const gh = { Authorization: "Bearer " + env.GITHUB_PAT, Accept: "application/vnd.github+json", "User-Agent": "peter-video-maker" };
-    const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/generate-kaggle.yml/runs?per_page=3`, { headers: gh });
+    const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/generate-kaggle.yml/runs?per_page=8`, { headers: gh });
     if (r.ok) {
       const runs = (await r.json()).workflow_runs || [];
-      const mine = runs.find((x) => new Date(x.created_at).getTime() > job.created_at - 120000);
+      // Ignore de-duped push runs (conclusion "skipped") and stale runs.
+      const mine = runs.find(
+        (x) => new Date(x.created_at).getTime() > job.created_at - 120000 &&
+          !(x.status === "completed" && x.conclusion === "skipped")
+      );
       if (mine && (!job.run_id || job.run_id === mine.id)) {
         let status = job.status, progress = job.progress;
         if (mine.status === "queued") { status = "gh_queued"; progress = "GitHub runner queued"; }

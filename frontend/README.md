@@ -32,7 +32,12 @@ progress + elapsed time survive refresh (job id in localStorage, state in D1).
   `generate-kaggle.yml` → D1 row `gh_queued`.
 - `GET /api/status?id=` → D1 row + live GitHub run state + elapsed ms.
   Frontend polls every 10s; timer ticks every 1s.
-- Workflow end step: uploads `final_reel.mp4` to tmpfiles.org
-  (`expire=86400`, files must be <100MB) → `POST /api/complete`
-  → D1 `done` + `temp_url`. Manual Colab runs have no `# JOB:` line,
-  so the callback step skips itself.
+- Workflow end step: `scripts/upload_temp.py` uploads `final_reel.mp4` to
+  **sto.care** (`PUT https://ul.sto.care/<name>`, 100 MB max, 72 h, direct
+  download link) and falls back to **gofile.io** (no size limit, download
+  page) if the file is too big or sto.care fails → `POST /api/complete`
+  → D1 `done` + `temp_url`. Manual runs have no `# JOB:` line, so the
+  callback step skips itself.
+- If Kaggle GPU quota is exhausted (`Maximum batch GPU session count`),
+  the workflow falls back to CPU TTS (`scripts/tts_cpu.py`, edge-tts) so
+  a video is still produced (stock voices, not cloned).

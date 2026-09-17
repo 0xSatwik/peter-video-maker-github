@@ -1,4 +1,9 @@
 moviepy==1.0.3
 numpy==1.26.4
-Pillow>=9.0.0,<10.0.0
-gradio_client>=1.0.0
+Pillow==10.4.0
+
+# NOTE: pinned to versions with prebuilt cp310 manylinux wheels. Older pins
+# (numpy 1.23.5 / Pillow 9.x) try to build from source on the updated GitHub
+# runner image and fail with pkgutil/ImpImporter errors.
+# gradio_client is only needed by the manual Colab voice path (generate_audio.py),
+# which the Kaggle workflow does not use, so it is not installed here.

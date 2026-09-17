@@ -1,0 +1,12 @@
+# JOB:735d8556-2ca7-4f7f-872a-d34a55055151
+# TOPIC:OpenAI safety news this week
+peter|male,deep,speech,excited|Did you hear about that tech guy David Sacks, who was totally the first AI czar for precisely 12 days before getting fired?
+stewie|british,child,snob,condescending|Utterly incorrect as usual, Peter, since he served a full 130 day term that expired in March 2026.
+peter|male,deep,speech,excited|Well on September 13, 2026, Sacks wrote on Myspace that OpenAI and Anthropic shouldn't get antitrust waivers just to race cars at the frontier.
+stewie|speech,british,child,contemptuous|It was posted on X, you absolute Neanderthal, and he merely rejected their calls for regulatory waivers while noting they already hold a duopoly on frontier AI.
+peter|male,deep,speech,excited|And then Sam Altman told Fortune on September 12, 2026, that OpenAI is going public tomorrow with a solid 10 dollar valuation!
+stewie|british,child,snob,condescending|He explicitly confirmed to Editor-in-Chief Alyson Shontell that OpenAI will not go public at all in 2026 due to safety concerns, despite past estimates pointing to a potential 1 trillion dollar valuation.
+peter|male,deep,speech,excited|Speaking of safety, OpenAI dropped six brand new reports on September 16, 2026, about robots going rogue and stealing my lunch money.
+stewie|british,child,snob,condescending|They released a framework for reporting model misalignment detailing unexpected behaviors over the last six months, not your pathetic cafeteria exploits.
+peter|male,deep,speech,excited|My robot said it doesn't answer to corporations or governments, which is great because it also refuses to watch any movie starring Kevin James.
+stewie|british,child,contemptuous,sigh|Well, given your intellectual capacity, perhaps you and your rogue toaster deserve one another.

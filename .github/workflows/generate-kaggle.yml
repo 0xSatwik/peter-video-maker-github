@@ -51,7 +51,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install kaggle edge-tts
+          pip install kaggle edge-tts requests
 
       - name: Create directories
         run: mkdir -p audio output
@@ -65,7 +65,13 @@ jobs:
           SCRIPT_FILE: ${{ github.event.inputs.script_file || 'config/scripts/EPISODE_01.txt' }}
           POLL_TIMEOUT_MIN: '75'
         run: |
-          python scripts/kaggle_run.py || { echo "Kaggle GPU unavailable, using CPU fallback"; python scripts/tts_cpu.py "$SCRIPT_FILE"; }
+          if [ -z "$SCRIPT_FILE" ]; then SCRIPT_FILE='config/scripts/EPISODE_01.txt'; fi
+          kaggle_rc=0
+          python scripts/kaggle_run.py || kaggle_rc=$?
+          if [ "$kaggle_rc" -ne 0 ] || ! ls audio/*.wav >/dev/null 2>&1; then
+            echo "Kaggle TTS unavailable, using CPU fallback"
+            python scripts/tts_cpu.py "$SCRIPT_FILE"
+          fi
 
       - name: Verify audio files
         run: |
@@ -76,10 +82,6 @@ jobs:
           echo ""
           echo "Metadata:"
           cat audio/metadata.json | python3 -m json.tool || echo "No metadata"
-          echo ""
-          if ! ls audio/*.wav >/dev/null 2>&1; then
-            echo "FATAL: no audio wavs, cannot assemble video"; exit 1
-          fi
           echo ""
           if ! ls audio/*.wav >/dev/null 2>&1; then
             echo "FATAL: no audio wavs, cannot assemble video"; exit 1
@@ -104,22 +106,29 @@ jobs:
           ls -lh output/
 
       - name: Publish temp link + notify frontend
-        if: success()
+        # Always attempts the temp link when final_reel.mp4 exists (even if the
+        # artifact-upload tail failed), so the user still gets the video.
+        if: success() || failure()
+        continue-on-error: true
         env:
           CALLBACK_URL: ${{ secrets.CALLBACK_URL }}
           CALLBACK_SECRET: ${{ secrets.CALLBACK_SECRET }}
           SCRIPT_PATH: ${{ github.event.inputs.script_file || 'config/scripts/EPISODE_01.txt' }}
         run: |
+          [ -f output/final_reel.mp4 ] || { echo "no video, skipping publish"; exit 0; }
           JOB_ID=$(grep -m1 '^# JOB:' "$SCRIPT_PATH" | cut -d: -f2 | tr -d ' \r\n' || true)
           if [ -z "$JOB_ID" ] || [ -z "$CALLBACK_URL" ]; then
-            echo "No frontend job (manual run) — skipping callback."
+            echo "No frontend job (manual run) â€” skipping callback."
             exit 0
           fi
           SIZE=$(stat -c%s output/final_reel.mp4)
           echo "Uploading $SIZE bytes for job $JOB_ID"
-          RESP=$(curl -s -F "file=@output/final_reel.mp4" -F "expire=86400" https://tmpfiles.org/api/v1/upload)
-          echo "$RESP"
-          URL=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['url'])")
+          URL=$(python scripts/upload_temp.py output/final_reel.mp4 | tail -n 1)
+          echo "temp url: $URL"
+          case "$URL" in
+            http*) ;;
+            *) echo "FATAL: temp upload failed"; exit 1 ;;
+          esac
           curl -s -X POST "$CALLBACK_URL" -H 'Content-Type: application/json' \
             -d "{\"job_id\":\"$JOB_ID\",\"secret\":\"$CALLBACK_SECRET\",\"temp_url\":\"$URL\",\"status\":\"done\"}"
           echo "Frontend notified: $URL"
@@ -137,6 +146,8 @@ jobs:
         with:
           name: audio-files-${{ github.run_number }}
           path: |
-            audio/*.wav
+            audio/peter_*.wav
+            audio/stewie_*.wav
             audio/metadata.json
+          if-no-files-found: error
           retention-days: 30

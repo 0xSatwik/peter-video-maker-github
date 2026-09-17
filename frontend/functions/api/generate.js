@@ -24,7 +24,7 @@ export async function onRequestPost({ request, env }) {
   const content = `# JOB:${id}\n# TOPIC:${topic}\n` + lines.join("\n") + "\n";
   const b64 = btoa(unescape(encodeURIComponent(content)));
   const repo = env.GITHUB_REPO;
-  const gh = { Authorization: "Bearer " + env.GITHUB_PAT, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
+  const gh = { Authorization: "Bearer " + env.GITHUB_PAT, Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "peter-video-maker" };
   const put = await fetch(`https://api.github.com/repos/${repo}/contents/${fname}`, {
     method: "PUT", headers: gh,
     body: JSON.stringify({ message: `Auto script for ${id}`, content: b64 }),

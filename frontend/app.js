@@ -5,18 +5,20 @@ const api = async (path, opts = {}) => {
   if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
   return j;
 };
+const AGENT_URL = "https://peter-agent.onrender.com";
+
+const key = () => localStorage.getItem("pv_key") || "";
+const headers = () => ({ "Content-Type": "application/json", "x-access-key": key() });
 const agent = async (path, body) => {
-  const r = await fetch((localStorage.getItem("pv_agent") || "") + path, {
+  const r = await fetch((localStorage.getItem("pv_agent") || AGENT_URL) + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-access-key": key() },
+    headers: headers(),
     body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
   return j;
 };
-const key = () => localStorage.getItem("pv_key") || "";
-const headers = () => ({ "Content-Type": "application/json", "x-access-key": key() });
 
 let timer = null, poller = null, startedAt = 0, doneAt = 0, agentToken = null;
 
@@ -45,9 +47,9 @@ async function showJob(id) {
       $("stage").textContent = j.status + (j.progress ? " — " + j.progress : "");
       $("barFill").style.width = stagePct(j.status) + "%";
       if (j.script) $("script").textContent = j.script;
-      if (j.status === "done") {
-        clearInterval(poller); tick();
-        if (j.temp_url) { $("dl").href = j.temp_url; show($("dl"), true); }
+      if (j.status === "done" || j.status === "error") {
+        clearInterval(poller); tick(); loadHistory();
+        if (j.status === "done" && j.temp_url) { $("dl").href = j.temp_url; show($("dl"), true); }
       }
       tick();
     } catch (e) { $("stage").textContent = "poll error: " + e.message; }
@@ -59,20 +61,45 @@ async function showJob(id) {
 
 $("unlock").onclick = async () => {
   const k = $("key").value.trim();
-  const a = $("agentUrl").value.trim().replace(/\/$/, "");
-  if (a) localStorage.setItem("pv_agent", a);
   if (!k) return;
   localStorage.setItem("pv_key", k);
   try { await api("/api/status?id=", { headers: headers() }); }
   catch (e) {
-    if (e.message === "unauthorized") { $("gateMsg").textContent = "Wrong key."; return; }
+    if (e.message === "unauthorized") { $("gateMsg").textContent = "Wrong key."; localStorage.removeItem("pv_key"); return; }
   }
   $("gate").classList.add("hidden");
-  show($("app"), true);
+  show($("app"), true); show($("history"), true);
+  loadHistory();
   const last = localStorage.getItem("pv_job");
   if (last) showJob(last);
   else if (localStorage.getItem("pv_draft")) restoreDraft();
 };
+
+/* ---------- history (D1) ---------- */
+async function loadHistory() {
+  try {
+    const j = await api("/api/jobs", { headers: headers() });
+    const ul = $("historyList");
+    ul.innerHTML = "";
+    const jobs = j.jobs || [];
+    $("historyEmpty").classList.toggle("hidden", jobs.length > 0);
+    for (const job of jobs) {
+      const li = document.createElement("li");
+      const cls = job.status === "done" ? "done" : (job.status === "error" ? "error" : "working");
+      const label = job.status === "done" ? "ready" : (job.status === "error" ? "failed" : "working");
+      li.innerHTML = `<span class="badge ${cls}">${label}</span>` +
+        `<span class="t"></span><span class="d"></span>`;
+      li.querySelector(".t").textContent = job.topic || "(untitled)";
+      li.querySelector(".d").textContent = new Date(job.created_at).toLocaleString();
+      li.onclick = () => {
+        if (job.status === "done" && job.temp_url) window.open(job.temp_url, "_blank", "noopener");
+        else { localStorage.setItem("pv_job", job.id); showJob(job.id); }
+      };
+      ul.appendChild(li);
+    }
+  } catch { /* history is optional */ }
+}
+$("refresh").onclick = loadHistory;
 
 $("draft").onclick = async () => {
   const topic = $("topic").value.trim();
@@ -85,7 +112,8 @@ $("draft").onclick = async () => {
     });
     agentToken = j.token;
     $("scriptBox").value = j.script;
-    $("draftState").textContent = `drafted (research: ${j.digest_chars} chars)`;
+    const steps = (j.steps || []).length;
+    $("draftState").textContent = `drafted · ${steps} agent steps · research ${j.digest_chars} chars`;
     localStorage.setItem("pv_draft", JSON.stringify({
       topic, script: j.script, token: j.token, state: $("draftState").textContent,
     }));
@@ -153,12 +181,13 @@ $("reset").onclick = () => {
   clearInterval(poller); clearInterval(timer);
   show($("job"), false); show($("dl"), false);
   $("app").classList.remove("hidden");
+  loadHistory();
 };
 
 if (key()) {
   $("gate").classList.add("hidden");
-  $("agentUrl").value = localStorage.getItem("pv_agent") || "";
-  show($("app"), true);
+  show($("app"), true); show($("history"), true);
+  loadHistory();
   const last = localStorage.getItem("pv_job");
   if (last) showJob(last);
   else restoreDraft();

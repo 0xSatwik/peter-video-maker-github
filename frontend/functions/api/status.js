@@ -15,7 +15,7 @@ export async function onRequestGet({ request, env }) {
   // Live GitHub run state for the Kaggle workflow (matched by recency)
   try {
     const repo = env.GITHUB_REPO;
-    const gh = { Authorization: "Bearer " + env.GITHUB_PAT, Accept: "application/vnd.github+json" };
+    const gh = { Authorization: "Bearer " + env.GITHUB_PAT, Accept: "application/vnd.github+json", "User-Agent": "peter-video-maker" };
     const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/generate-kaggle.yml/runs?per_page=3`, { headers: gh });
     if (r.ok) {
       const runs = (await r.json()).workflow_runs || [];

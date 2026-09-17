@@ -51,12 +51,12 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install kaggle
+          pip install kaggle edge-tts
 
       - name: Create directories
         run: mkdir -p audio output
 
-      - name: TTS on Kaggle (auto start/stop, no Colab URL)
+      - name: TTS on Kaggle (auto start/stop, CPU fallback on GPU quota)
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
@@ -64,7 +64,8 @@ jobs:
           KERNEL_DIR: kaggle/tts-kernel
           SCRIPT_FILE: ${{ github.event.inputs.script_file || 'config/scripts/EPISODE_01.txt' }}
           POLL_TIMEOUT_MIN: '75'
-        run: python scripts/kaggle_run.py
+        run: |
+          python scripts/kaggle_run.py || { echo "Kaggle GPU unavailable, using CPU fallback"; python scripts/tts_cpu.py "$SCRIPT_FILE"; }
 
       - name: Verify audio files
         run: |
@@ -75,6 +76,10 @@ jobs:
           echo ""
           echo "Metadata:"
           cat audio/metadata.json | python3 -m json.tool || echo "No metadata"
+          echo ""
+          if ! ls audio/*.wav >/dev/null 2>&1; then
+            echo "FATAL: no audio wavs, cannot assemble video"; exit 1
+          fi
 
       - name: Assemble Video
         env:

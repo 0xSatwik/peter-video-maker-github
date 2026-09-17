@@ -80,6 +80,10 @@ jobs:
           if ! ls audio/*.wav >/dev/null 2>&1; then
             echo "FATAL: no audio wavs, cannot assemble video"; exit 1
           fi
+          echo ""
+          if ! ls audio/*.wav >/dev/null 2>&1; then
+            echo "FATAL: no audio wavs, cannot assemble video"; exit 1
+          fi
 
       - name: Assemble Video
         env:

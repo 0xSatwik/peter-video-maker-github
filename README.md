@@ -2,13 +2,17 @@
 
 Generate **Family Guy short videos** (Instagram Reels) with AI-cloned voices of Peter and Stewie Griffin.
 
-Uses **MOSS-TTS 1.7B** for zero-shot voice cloning on Google Colab (free), and **GitHub Actions** for automated video assembly.
+Uses **MOSS-TTS 1.7B** for zero-shot voice cloning, and **GitHub Actions** for automated video assembly.
+
+Two voice pipelines (pick one per run):
+- **A. Kaggle Auto (recommended)** — `Generate Short (Kaggle Auto TTS)`: starts a Kaggle GPU kernel, batch-generates all clips, auto-stops. No manual step, no idle credit burn.
+- **B. Colab Manual (fallback)** — `Generate Family Guy Short`: you start the Colab notebook, paste the Gradio URL. Use if Kaggle quota is exhausted.
 
 ---
 
 ## 🚀 Quick Start
 
-### Step 1: Launch the Voice AI on Google Colab
+### Step 1 (Option B): Launch the Voice AI on Google Colab (manual fallback)
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/0xSatwik/peter-video-maker-github/blob/main/learnwithperandstewie.ipynb)
 

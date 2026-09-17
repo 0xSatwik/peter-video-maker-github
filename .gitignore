@@ -1,1 +1,10 @@
 assets/minecraft_bg7.mp4
+# Kaggle + local secrets (never commit)
+kaggle.json
+.kaggle/
+kaggle/tts-kernel/output/
+audio/
+output/
+__pycache__/
+*.pyc
+.serena/

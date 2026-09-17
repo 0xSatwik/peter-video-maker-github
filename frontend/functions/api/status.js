@@ -24,7 +24,9 @@ export async function onRequestGet({ request, env }) {
         (x) => new Date(x.created_at).getTime() > job.created_at - 120000 &&
           !(x.status === "completed" && x.conclusion === "skipped")
       );
-      if (mine && (!job.run_id || job.run_id === mine.id)) {
+      // Always re-match the newest real run: an earlier poll may have latched
+      // onto the de-duped "skipped" push run before this filter existed.
+      if (mine) {
         let status = job.status, progress = job.progress;
         if (mine.status === "queued") { status = "gh_queued"; progress = "GitHub runner queued"; }
         else if (mine.status === "in_progress") { status = "kaggle_tts"; progress = "TTS running (job " + mine.run_number + ")"; }

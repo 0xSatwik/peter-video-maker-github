@@ -1,0 +1,19 @@
+Peter, how can I get free API keys without paying a single dollar?
+
+There's one GitHub repo that solves that completely. You get thousands of APIs for absolutely free.
+
+Wait, really? What repo?
+
+It's called Public APIs, sitting at over four hundred and eighty thousand stars, one of the biggest repositories on all of GitHub.
+
+Holy shit, over four hundred and eighty thousand stars. What's actually inside it?
+
+Real-time weather data, movie, anime, and show databases, real-time crypto prices, sports stats, finance tools, even NASA's own data, all completely free.
+
+Wait, all of that organized in one place?
+
+All of it. You never have to hunt for an API or pay for access again.
+
+Okay, this is perfect for building apps and projects. How do I get this?
+
+Just check my broadcast channel or Telegram from bio

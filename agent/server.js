@@ -15,6 +15,8 @@
 
 const http = require("http");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 const ACCESS_KEY = process.env.ACCESS_KEY || "";
@@ -25,26 +27,67 @@ const MONID_KEY = process.env.MONID_KEY || "";
 const MONID_BASE = process.env.MONID_BASE || "https://api.monid.ai/v1";
 const MAX_SEARCH_URLS = parseInt(process.env.MAX_SEARCH_URLS || "8", 10);
 
-const WRITER_SYS = `You write Family Guy short scripts for AI voice cloning.
+const WRITER_SYS = `You write "Peter explains tech" Family Guy shorts for AI voice cloning, in the exact style of the EXAMPLE below.
+
 Output ONLY dialogue lines, nothing else. No headers, no numbering, no blank lines, no commentary.
 Each line EXACTLY: SPEAKER|TAGS|DIALOGUE
-- SPEAKER is lowercase: peter or stewie. Alternate naturally.
-- TAGS: comma list, e.g. male, deep, speech, excited
-- DIALOGUE: 1-2 punchy sentences, in character. Peter: manchild logic, non-sequiturs. Stewie: erudite British baby, world domination, contempt for Peter.
-6-10 exchanges total. Use the FACT SHEET's concrete numbers, names and dates — Peter misquotes them confidently, Stewie corrects him with the real figure. End on a joke.`;
+- SPEAKER lowercase: peter or stewie. STRICTLY alternating, starting with stewie.
+- TAGS: comma delivery list. peter: male, curious/excited/impressed + one emotion. stewie: british, calm/precise/smug.
+- DIALOGUE: 1-2 short sentences.
+
+STYLE RULES (from the channel's proven format):
+- STEWIE opens by addressing Peter by name ("Peter, ...") with a hook question about the topic, then reacts amazed/skeptical between Peter's answers.
+- PETER explains the tech with surprising confidence and real details: numbers, names, stats — all SPELLED OUT AS WORDS ("four hundred and eighty thousand stars", "one point six billion tokens", "October tenth"). Peter mispronounces one thing confidently and moves on; never break his flow with corrections longer than one clause.
+- Every stewie line is either a follow-up question or an amazed/skeptical reaction ("Wait, really?", "Holy crap", "Wait, no sign up at all?").
+- PETER ends the video with a CALL TO ACTION: "check the broadcast channel or the Telegram link in the bio."
+- 8-14 exchanges. Weave the FACT SHEET's concrete facts into Peter's explanations naturally.
+
+EXAMPLE (exact tone and rhythm to match):
+stewie|curious|Peter, how can I get free API keys without paying a single dollar?
+peter|confident,excited|There's one GitHub repo that solves that completely. You get thousands of APIs for absolutely free.
+stewie|surprised|Wait, really? What repo?
+peter|smart|It's called Public APIs, sitting at over four hundred and eighty thousand stars, one of the biggest repositories on all of GitHub.
+stewie|shocked|Holy crap, over four hundred and eighty thousand stars. What's actually inside it?
+peter|informative|Real-time weather data, movie, anime, and show databases, real-time crypto prices, sports stats, finance tools, even NASA's own data, all completely free.
+stewie|curious|Wait, all of that organized in one place?
+peter|calm|All of it. You never have to hunt for an API or pay for access again.
+stewie|excited|Okay, this is perfect for building apps and projects. How do I get this?
+peter|casual|Just check my broadcast channel or Telegram from bio.`;
 
 const PLANNER_SYS = `You plan live web research for a comedy script. Given a topic, return 3 short web search queries that surface the FRESHEST concrete facts, numbers, news or stats about it. One query should target the last few days if it is a news topic.
 Output ONLY a JSON array of exactly 3 strings, nothing else. Example: ["bitcoin price drop january 2026","bitcoin etf outflows latest","bitcoin regulation news this week"]`;
 
 const EXTRACTOR_SYS = `You are a research analyst. From the raw web page extracts below, distill a FACT SHEET for a comedy writer: the freshest concrete facts only — numbers, dollar amounts, dates, names, quotes, rankings. Max 15 bullets, one line each. Discard boilerplate and anything undated/unclear. If the extracts contradict, prefer the most recent. Output ONLY the bullet list.`;
 
-const CRITIC_SYS = `You are a ruthless script doctor for a Family Guy short. You receive a draft script and a fact sheet.
-Check: (1) exact format SPEAKER|TAGS|DIALOGUE, lowercase peter/stewie, 6-10 alternating exchanges; (2) at least 2 fresh concrete facts from the fact sheet used, ideally with Peter getting one wrong and Stewie correcting; (3) actually funny, punchy, ends on a joke.
+const CRITIC_SYS = `You are a ruthless script doctor for a "Peter explains tech" Family Guy short. You receive a draft script and a fact sheet.
+Check: (1) exact format SPEAKER|TAGS|DIALOGUE, lowercase peter/stewie, strictly alternating 8-14 exchanges; (2) stewie asks/reacts, peter explains confidently with real facts from the fact sheet; (3) numbers are spelled out as words; (4) ends with a call to action (broadcast channel / Telegram in bio); (5) punchy and funny.
 If the draft passes all checks, output it UNCHANGED. Otherwise output your improved version. Output ONLY dialogue lines, nothing else.`;
 
-const REVISE_SYS = `You revise an existing Family Guy short script per the user instruction.
-Output ONLY dialogue lines in the SAME format (SPEAKER|TAGS|DIALOGUE, lowercase peter/stewie, 6-10 exchanges). No commentary.
-Keep what works, change what the instruction asks. You may use the fact sheet for fresh facts.`;
+const REVISE_SYS = `You revise an existing "Peter explains tech" script per the user instruction.
+Keep the exact format: SPEAKER|TAGS|DIALOGUE lines, lowercase peter/stewie, strictly alternating, stewie asks/reacts and peter explains, numbers spelled out as words, ends with a call to action. Keep what works, change only what the instruction asks. You may use the fact sheet for fresh facts. Output ONLY dialogue lines, no commentary.`;
+
+// Load example conversions (user drops raw transcripts in assets/example-conversion)
+// Lines alternate: first line addresses Peter (= stewie), next = peter explaining, etc.
+// Timestamps (00:00:13) are stripped. Kept verbatim as few-shot so the model
+// matches the creator's exact tone, pacing and CTA structure.
+function loadExamples() {
+  try {
+    const dir = path.join(__dirname, "..", "assets", "example-conversion");
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".txt")).sort();
+    for (const f of files) {
+      const raw = fs.readFileSync(path.join(dir, f), "utf8");
+      const lines = raw.split("\n").map((l) => l.trim())
+        .filter((l) => l && !/^\d{1,2}:\d{2}(:\d{2})?$/.test(l) && l.length > 15);
+      if (lines.length >= 6) {
+        return `### EXAMPLE OF THE EXACT STYLE (real production transcript, unlabelled; speakers alternate starting with stewie addressing "Peter,"):\n`
+          + lines.map((l, i) => (i % 2 === 0 ? "stewie: " : "peter: ") + l).join("\n") + "\n";
+      }
+    }
+  } catch {}
+  return "";
+}
+const STYLE_EXAMPLES = loadExamples();
+console.log("style examples loaded:", STYLE_EXAMPLES ? STYLE_EXAMPLES.length : 0, "chars");
 
 const tokens = new Map(); // token -> {topic, facts, digest, steps, ts}
 const TOKEN_TTL = 30 * 60 * 1000;
@@ -224,7 +267,7 @@ async function handle(req, res) {
 
     // 5. WRITE
     const raw = await gemini(
-      WRITER_SYS + "\n\nFACT SHEET (freshest live-web facts, may be partial):\n" + factBlock,
+      WRITER_SYS + "\n\n" + STYLE_EXAMPLES + "\nFACT SHEET (freshest live-web facts, may be partial):\n" + factBlock,
       "Topic: " + topic, maxTokens
     );
     steps.push("draft written");
@@ -233,7 +276,7 @@ async function handle(req, res) {
     let finalRaw = raw;
     try {
       const critiqued = await gemini(
-        CRITIC_SYS + "\n\nFACT SHEET:\n" + factBlock + "\n\nDRAFT:\n" + raw,
+        CRITIC_SYS + "\n\n" + STYLE_EXAMPLES + "\nFACT SHEET:\n" + factBlock + "\n\nDRAFT:\n" + raw,
         "Return the final script lines only.", maxTokens
       );
       if (validLines(critiqued).length >= 2) { finalRaw = critiqued; steps.push("critique pass done"); }
@@ -245,7 +288,7 @@ async function handle(req, res) {
       steps.push("format repair retry");
       try {
         const retry = await gemini(
-          WRITER_SYS, "Topic: " + topic + "\nFACTS:\n" + factBlock +
+          WRITER_SYS + "\n\n" + STYLE_EXAMPLES, "Topic: " + topic + "\nFACTS:\n" + factBlock +
           "\nYour previous attempt was invalid. Output ONLY valid SPEAKER|TAGS|DIALOGUE lines:", maxTokens
         );
         lines = validLines(retry);
@@ -269,7 +312,7 @@ async function handle(req, res) {
     const facts = t ? t.facts : "(no research available)";
     const steps = [];
     const raw = await gemini(
-      REVISE_SYS + "\n\nCURRENT SCRIPT:\n" + script +
+      REVISE_SYS + "\n\n" + STYLE_EXAMPLES + "\nCURRENT SCRIPT:\n" + script +
       "\n\nFACT SHEET (freshest live-web facts):\n" + facts,
       "Instruction: " + instruction, 800
     );

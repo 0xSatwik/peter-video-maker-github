@@ -1,0 +1,20 @@
+00:00:00
+Peter, everyone's Claude Code is out here building production-ready apps, and mine runs out of tokens before I've even finished explaining the task. Because you're using Claude Code wrong, that's why. There are four plugins that'll take you from confused vibe coder to actual senior engineer level results.
+
+00:00:13
+Okay, wait. You're telling me the fix is just four plugins? First one's called Ponytail. It optimizes Claude Code's output and cuts your token usage by fifty percent without losing any accuracy. So it stops Claude from writing useless code?
+
+00:00:23
+Exactly. Second is Omniroute. It connects Claude Code to over three hundred and fifty free AI providers, and the moment your usage limit runs out, it auto-switches to the next best available model
+
+00:00:32
+and gives you one point six billion tokens every month. Wait, so I basically never get cut off while coding? Third is Graphify. It turns your entire code base into a knowledge graph, so it stops wasting tokens rereading the same files over and over.
+
+00:00:44
+Wait, so it actually remembers things now? Exactly. Fourth is Agent Skills, a pack of twenty-four skills that lets you vibe code like an actual senior engineer,
+
+00:00:51
+built by a former Google AI engineering director. It has dedicated skills for planning, coding, testing, and publishing, and it activates the right one at the right time while coding. Okay, that's actually a little terrifying, but how do I get all four plugins?
+
+00:01:02
+Simple. Join my broadcast channel or Telegram for my bio.

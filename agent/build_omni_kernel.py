@@ -52,7 +52,7 @@ SCRIPT_SEL_DEFAULT = "config/scripts/EPISODE_01.txt"
 REPO_DIR = "/tmp/pvrepo"
 !rm -rf /tmp/pvrepo peter-video-maker-github
 !git clone --depth 1 --filter=blob:none --sparse https://github.com/0xSatwik/peter-video-maker-github.git /tmp/pvrepo
-!git -C /tmp/pvrepo sparse-checkout set --no-cone config/scripts assets/peter-voice.mp3 assets/Stewies-voice.mp3 assets/perter10seonds.wav
+!git -C /tmp/pvrepo sparse-checkout set --no-cone config/scripts assets/peter-voice-latest.mp3 assets/peter-voice.mp3 assets/Stewies-voice.mp3 assets/perter10seonds.wav
 
 SCRIPT = os.path.join(REPO_DIR, SCRIPT_SEL_DEFAULT)
 print("SCRIPT:", SCRIPT, os.path.exists(SCRIPT))
@@ -82,9 +82,15 @@ def parse_script(path):
     return lines
 
 VOICE_REFS = {
-    "peter": [os.path.join(REPO_DIR, "assets/perter10seonds.wav"),
+    "peter": [os.path.join(REPO_DIR, "assets/peter-voice-latest.mp3"),
+              os.path.join(REPO_DIR, "assets/perter10seonds.wav"),
               os.path.join(REPO_DIR, "assets/peter-voice.mp3")],
     "stewie": [os.path.join(REPO_DIR, "assets/Stewies-voice.mp3")],
+}
+# Consistent ref + instruct = more stable cloning (docs/tips.md).
+INSTRUCTS = {
+    "peter": "male, american accent, energetic",
+    "stewie": "male, british accent, child, high pitch",
 }
 for k, ps in VOICE_REFS.items():
     print(k, [p for p in ps if os.path.exists(p)] or "MISSING")
@@ -92,7 +98,9 @@ for k, ps in VOICE_REFS.items():
 
 CELL_GEN = """# Cell 4: batch voice-clone every line -> /kaggle/working/audio + metadata.json
 # Realism settings (match the Colab UI): num_step=32 diffusion steps,
-# speed=1.0, fp16, native 24 kHz output. Kernel auto-terminates when done.
+# speed=1.0, fp16, native 24 kHz output. VoiceClonePrompt is built once per
+# speaker (ref encoded once -> consistent voice across all lines). Kernel
+# auto-terminates when done.
 import gc
 import json
 import time
@@ -118,14 +126,31 @@ def resolve_ref(sp):
             return p
     return None
 
-def synth_clone(text, ref_audio):
-    # Same call shape as the Colab UI generate() in Voice Cloning mode.
-    # language="English" improves quality (no extra deps). Realistic defaults:
-    # 32 diffusion steps, natural speed, fp16, native 24 kHz output.
-    audio = model.generate(
-        text=text, language="English", ref_audio=ref_audio,
-        num_step=NUM_STEP, speed=SPEED,
-    )
+# Encode each speaker's reference ONCE -> reuse across all lines (consistent
+# voice tone + skips re-loading/audio analysis every line).
+prompts = {}
+def get_prompt(sp, ref):
+    if sp not in prompts:
+        try:
+            prompts[sp] = model.create_voice_clone_prompt(ref_audio=ref)
+            print(f"cloned voice for {sp} from {ref}")
+        except Exception as e:
+            print(f"prompt build failed for {sp}: {e} -> will pass ref_audio directly")
+            prompts[sp] = None
+    return prompts[sp]
+
+def synth_clone(sp, text, ref_audio):
+    # Same call shape as the Colab UI generate() in Voice Cloning mode, plus a
+    # consistent instruct (docs/tips.md: consistent ref+instruct = stabler clone).
+    kwargs = dict(text=text, language="English", num_step=NUM_STEP, speed=SPEED)
+    prompt = get_prompt(sp, ref_audio)
+    if prompt is not None:
+        kwargs["voice_clone_prompt"] = prompt
+    else:
+        kwargs["ref_audio"] = ref_audio
+    if sp in INSTRUCTS and INSTRUCTS[sp]:
+        kwargs["instruct"] = INSTRUCTS[sp]
+    audio = model.generate(**kwargs)
     t = audio[0] if isinstance(audio[0], torch.Tensor) else torch.tensor(audio[0])
     if t.dim() == 1:
         t = t.unsqueeze(0)
@@ -145,7 +170,7 @@ for i, ln in enumerate(lines):
     try:
         s = time.time()
         with torch.no_grad():
-            wav = synth_clone(text, ref)
+            wav = synth_clone(sp, text, ref)
         torchaudio.save(out, wav, 24000)
         dur = wav.shape[-1] / 24000
         print(f"OK [{i+1}/{len(lines)}] {sp} {time.time()-s:.1f}s ({dur:.1f}s audio) -> {out}")

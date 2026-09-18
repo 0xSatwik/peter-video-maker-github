@@ -9,8 +9,8 @@ const repo = "0xSatwik/peter-video-maker-github";
 const GH = { Authorization: "Bearer " + env.GH_PAT, Accept: "application/vnd.github+json", "User-Agent": "pvm" };
 
 (async () => {
-  const runs = await (await fetch(`https://api.github.com/repos/${repo}/actions/workflows/generate-kaggle.yml/runs?per_page=1`, { headers: GH })).json();
-  const r = runs.workflow_runs[0];
+  const runs = await (await fetch(`https://api.github.com/repos/${repo}/actions/workflows/generate-kaggle.yml/runs?per_page=3`, { headers: GH })).json();
+  const r = (runs.workflow_runs || []).find((x) => !(x.status === "completed" && x.conclusion === "skipped")) || runs.workflow_runs[0];
   console.log("run", r.run_number, r.status, r.conclusion);
   const jobs = await (await fetch(`https://api.github.com/repos/${repo}/actions/runs/${r.id}/jobs`, { headers: GH })).json();
   const lr = await fetch(`https://api.github.com/repos/${repo}/actions/jobs/${jobs.jobs[0].id}/logs`, { headers: GH });

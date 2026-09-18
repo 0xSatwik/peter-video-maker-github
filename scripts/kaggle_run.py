@@ -13,6 +13,7 @@ Env:
   OUT_DIR (default audio)
 """
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -105,6 +106,25 @@ def main():
     if d.returncode != 0:
         print("FATAL: output download failed.")
         sys.exit(1)
+
+    # Kaggle zips /kaggle/working/* so the notebook's `audio/` folder arrives
+    # NESTED as audio/audio/*.wav. Flatten it, otherwise every run looks like
+    # "no wavs" and silently falls back to the CPU voices.
+    nested = os.path.join(OUT_DIR, "audio")
+    if os.path.isdir(nested):
+        moved = 0
+        for f in os.listdir(nested):
+            src = os.path.join(nested, f)
+            dst = os.path.join(OUT_DIR, f)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                shutil.move(src, dst)
+                moved += 1
+        try:
+            os.rmdir(nested)
+        except OSError:
+            pass
+        print(f"Flattened {moved} files out of {nested}")
+
     files = os.listdir(OUT_DIR)
     print(f"Downloaded {len(files)} files to {OUT_DIR}/")
     wavs = [f for f in files if f.endswith(".wav")]
@@ -112,6 +132,31 @@ def main():
     if not wavs:
         print("FATAL: no wavs in kernel output. Check kernel log on kaggle.com.")
         sys.exit(1)
+
+    # metadata.json from the kernel uses absolute /kaggle/working/audio/... paths
+    # which do not exist here -> rewrite to the local copies so the assembler
+    # does not silently skip every clip.
+    meta_path = os.path.join(OUT_DIR, "metadata.json")
+    if os.path.exists(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        fixed = 0
+        for entry in meta:
+            p = entry.get("audio_file") or ""
+            local = os.path.join(OUT_DIR, os.path.basename(p)) if p else ""
+            if local and os.path.exists(local):
+                entry["audio_file"] = local
+                entry["exists"] = True
+                fixed += 1
+            else:
+                entry["exists"] = False
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        print(f"Rewrote {fixed}/{len(meta)} metadata paths to local files")
+        if fixed == 0:
+            print("FATAL: metadata has no matching local audio.")
+            sys.exit(1)
+
     print("OK: Kaggle TTS done.")
 
 

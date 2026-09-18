@@ -26,6 +26,25 @@ def log(msg):
     print(msg, flush=True)
 
 
+def probe_duration(path):
+    """Duration of an audio file, works with a real ffprobe OR a bare ffmpeg."""
+    import json as _json
+    import re
+    try:
+        probe = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', path],
+            capture_output=True, text=True,
+        )
+        return float(_json.loads(probe.stdout)['format']['duration'])
+    except Exception:
+        out = subprocess.run(['ffmpeg', '-hide_banner', '-i', path],
+                             capture_output=True, text=True, errors='replace').stderr
+        m = re.search(r'Duration:\s*(\d+):(\d+):([\d.]+)', out)
+        if m:
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+        raise
+
+
 def find_font():
     """Find the best thick/geometric font available on the system."""
     # Frick/Komika/TheBoldFont style geometric thick fonts
@@ -166,11 +185,7 @@ def assemble():
         if not entry.get('exists', False) or not os.path.exists(audio_path):
             continue
             
-        probe = subprocess.run(
-            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', audio_path],
-            capture_output=True, text=True
-        )
-        duration = float(json.loads(probe.stdout)['format']['duration'])
+        duration = probe_duration(audio_path)
         
         clip_timing.append({
             'start': current_time,

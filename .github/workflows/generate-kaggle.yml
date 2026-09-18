@@ -94,8 +94,16 @@ jobs:
       - name: Assemble Video
         env:
           SCRIPT_PATH: ${{ github.event.inputs.script_file || 'config/scripts/EPISODE_01.txt' }}
+          ASSEMBLE_ENGINE: ffmpeg
           PYTHONUNBUFFERED: '1'
-        run: python -u scripts/assemble_video.py
+        run: |
+          if [ "${ASSEMBLE_ENGINE:-ffmpeg}" = "python" ]; then
+            echo "engine: python (per-frame)"
+            python -u scripts/assemble_video.py
+          else
+            echo "engine: ffmpeg filtergraph (fast)"
+            python -u scripts/assemble_fast.py || { echo "fast engine failed -> falling back to python engine"; python -u scripts/assemble_video.py; }
+          fi
 
       - name: Add Captions
         env:

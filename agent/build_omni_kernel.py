@@ -104,8 +104,9 @@ for k, ps in VOICE_REFS.items():
 CELL_GEN = """# Cell 4: batch voice-clone every line -> /kaggle/working/audio + metadata.json
 # Realism settings (match the Colab UI): num_step=32 diffusion steps,
 # speed=1.0, fp16, native 24 kHz output. VoiceClonePrompt is built once per
-# speaker (ref encoded once -> consistent voice across all lines). Kernel
-# auto-terminates when done.
+# speaker and lines are BATCHED per speaker (OmniVoice batch mode is ~2.6x
+# faster than sequential). Falls back to per-line on any batch error.
+# Kernel auto-terminates when done.
 import gc
 import json
 import time
@@ -144,33 +145,73 @@ def get_prompt(sp, ref):
             prompts[sp] = None
     return prompts[sp]
 
-def synth_clone(sp, text, ref_audio):
+def build_kwargs(sp, ref_audio, batch_n=None):
     # Same call shape as the Colab UI generate() in Voice Cloning mode, plus a
     # consistent instruct (docs/tips.md: consistent ref+instruct = stabler clone).
     # If the model rejects the instruct (unsupported attribute), retry without it
     # so one bad attribute never kills the whole line.
-    base = dict(text=text, language="English", num_step=NUM_STEP, speed=SPEED)
+    base = dict(text=None, language="English", num_step=NUM_STEP, speed=SPEED)
+    if batch_n:
+        base["text"] = [None] * batch_n
     prompt = get_prompt(sp, ref_audio)
     if prompt is not None:
         base["voice_clone_prompt"] = prompt
     else:
         base["ref_audio"] = ref_audio
-
-    kwargs = dict(base)
     if INSTRUCTS.get(sp):
-        kwargs["instruct"] = INSTRUCTS[sp]
+        base["instruct"] = INSTRUCTS[sp]
+    return base
+
+def generate_with_fallback(base):
     try:
-        audio = model.generate(**kwargs)
+        return model.generate(**base)
     except Exception as e:
-        if "instruct" in str(e).lower() and "instruct" in kwargs:
-            print(f"instruct rejected for {sp} ({e}) -> retrying without instruct")
-            audio = model.generate(**base)
-        else:
-            raise
+        if "instruct" in str(e).lower() and "instruct" in base:
+            print(f"instruct rejected ({e}) -> retrying without instruct")
+            no_instr = {k: v for k, v in base.items() if k != "instruct"}
+            return model.generate(**no_instr)
+        raise
+
+def to_tensor(audio):
     t = audio[0] if isinstance(audio[0], torch.Tensor) else torch.tensor(audio[0])
     if t.dim() == 1:
         t = t.unsqueeze(0)
     return t.cpu()
+
+# group lines by speaker for batching (order of output wavs is preserved later)
+by_speaker = {}
+for i, ln in enumerate(lines):
+    by_speaker.setdefault(ln["speaker"], []).append(i)
+
+results = {}   # line index -> wav tensor or None
+for sp, idxs in by_speaker.items():
+    ref = resolve_ref(sp)
+    if ref is None:
+        for i in idxs:
+            print(f"SKIP {i}: missing ref for {sp}")
+            results[i] = None
+        continue
+    texts = [lines[i]["text"] for i in idxs]
+    s = time.time()
+    try:
+        base = build_kwargs(sp, ref, batch_n=len(texts))
+        base["text"] = texts
+        audios = generate_with_fallback(base)
+        if not isinstance(audios, (list, tuple)) or len(audios) != len(texts):
+            raise RuntimeError(f"batch returned {len(audios)} for {len(texts)} texts")
+        for i, audio in zip(idxs, audios):
+            results[i] = to_tensor([audio])
+        print(f"batch {sp}: {len(texts)} lines in {time.time()-s:.1f}s")
+    except Exception as e:
+        print(f"batch {sp} failed ({e}) -> falling back to per-line")
+        for i in idxs:
+            try:
+                base = build_kwargs(sp, ref)
+                base["text"] = lines[i]["text"]
+                results[i] = to_tensor(generate_with_fallback(base))
+            except Exception as e2:
+                print(f"FAIL {i}: {e2}")
+                results[i] = None
 
 ok, fail = 0, 0
 meta = []
@@ -178,26 +219,15 @@ t0 = time.time()
 for i, ln in enumerate(lines):
     sp, text = ln["speaker"], ln["text"]
     out = f"{OUT}/{sp}_{i:03d}.wav"
-    ref = resolve_ref(sp)
-    if ref is None and sp in VOICE_REFS:
-        print(f"SKIP {i}: missing ref for {sp}"); fail += 1
+    wav = results.get(i)
+    if wav is None:
+        fail += 1
         meta.append({"index": i, "speaker": sp, "text": text, "audio_file": out, "exists": False})
         continue
-    try:
-        s = time.time()
-        with torch.no_grad():
-            wav = synth_clone(sp, text, ref)
-        torchaudio.save(out, wav, 24000)
-        dur = wav.shape[-1] / 24000
-        print(f"OK [{i+1}/{len(lines)}] {sp} {time.time()-s:.1f}s ({dur:.1f}s audio) -> {out}")
-        ok += 1
-        meta.append({"index": i, "speaker": sp, "text": text, "audio_file": out, "exists": True})
-    except Exception as e:
-        print(f"FAIL [{i+1}/{len(lines)}] {e}"); fail += 1
-        meta.append({"index": i, "speaker": sp, "text": text, "audio_file": out, "exists": False})
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    torchaudio.save(out, wav, 24000)
+    print(f"OK [{i+1}/{len(lines)}] {sp} ({wav.shape[-1]/24000:.1f}s audio) -> {out}")
+    ok += 1
+    meta.append({"index": i, "speaker": sp, "text": text, "audio_file": out, "exists": True})
 
 with open(f"{OUT}/metadata.json", "w", encoding="utf-8") as f:
     json.dump(meta, f, indent=2)

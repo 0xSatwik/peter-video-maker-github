@@ -1,0 +1,24 @@
+# JOB:bfb1a8d6-bc39-4064-98a1-30f07874786e
+# TOPIC:ev is a new "System One" decision-making AI model from TypeSafe AI that outputs structured probabilities instead of text.Launched on September 15, 2026, and created by TypeSafe AI co-founder Diogo Almeida (an ex-OpenAI researcher known for RLHF and InstructGPT), Jev is designed to act as a fast, low
+peter|male,loud,excited,confused|Lois, there’s a brand-new AI called Jev, and apparently it’s fast enough to make my brain look even slower!
+stewie|british,dry,condescending,precise|That would be a challenge, Peter, but Jev is interesting for a different reason: it isn't designed to chat. It makes structured decisions for software.
+peter|male,confused,dumb,casual|So instead of writing me a paragraph, it just tells the computer what to do?
+stewie|british,pedantic,technical,sharp|Exactly. You give it application state and typed questions, and it returns choices, scores, probabilities, and confidence.
+peter|male,excited,loud,ignorant|So it’s basically an AI that says YES, NO, or MAYBE without writing a novel!
+stewie|british,calm,arrogant,precise|More accurately, TypeSafe calls it a System One Model, built specifically for fast, machine-native decisions.
+peter|male,confused,stupid,excited|And how does it get that fast?
+stewie|british,technical,condescending,dry|A custom architecture, parallel sampling, and a training method called Reinforcement Learning for Calibrated Decisions, or RLCD.
+peter|male,loud,excited,manchild|Translation: normal AI writes things one piece at a time, while Jev can produce its structured outputs in parallel!
+stewie|british,approving,precise,pedantic|Precisely. TypeSafe reports roughly 70 to 500 milliseconds of end-to-end latency and says Jev can be up to 193.6 times faster and 444.6 times cheaper on its published workflow evaluations.
+peter|male,shocked,loud,dumb|Four hundred forty-four times cheaper?! Lois, cancel my expensive AI subscription!
+stewie|british,exasperated,dry,sharp|Its launch price is $0.042 per million input tokens, with output tokens free.
+peter|male,excited,greedy,casual|What can it actually do?
+stewie|british,technical,clear,arrogant|Classification, routing, risk checks, guardrails, scoring, agent verification, and real-time decisions. It can even handle choices with up to 255 options.
+peter|male,loud,excited,weird|And I heard it played Doom!
+stewie|british,smug,precise,dry|Yes, TypeSafe demonstrated a Doom bot using structured game state, plus a Wikiracing system that makes decisions across huge numbers of possible links.
+peter|male,confused,loud,ignorant|So is Jev replacing ChatGPT?
+stewie|british,condescending,calm,precise|No. Think of it as a decision engine that can work alongside generative AI. Chat models produce words for people; Jev produces decisions software can directly act on.
+peter|male,excited,loud,proud|And TypeSafe launched it on September 15, 2026, with forty million dollars in seed funding!
+stewie|british,serious,technical,dry|Correct. Just remember the giant benchmark numbers are TypeSafe's own workflow results, so broader independent testing will matter.
+peter|male,loud,excited,idiotic|So the future might be less AI that talks forever—and more AI quietly deciding what happens next!
+stewie|british,smug,dramatic,sharp|Now you've finally made one intelligent decision, Peter.

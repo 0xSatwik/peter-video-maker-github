@@ -59,7 +59,16 @@ async function showJob(id) {
   poller = setInterval(poll, 10000);
 }
 
+// Fire-and-forget warm-up: the Render free tier sleeps after ~15 min idle, so
+// ping /health as soon as the page loads to start waking the agent.
+function warmAgent() {
+  try {
+    fetch((localStorage.getItem("pv_agent") || AGENT_URL) + "/health", { cache: "no-store" }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
 $("unlock").onclick = async () => {
+  warmAgent();
   const k = $("key").value.trim();
   if (!k) return;
   localStorage.setItem("pv_key", k);
@@ -105,7 +114,16 @@ $("draft").onclick = async () => {
   const topic = $("topic").value.trim();
   if (!topic) return;
   $("draft").disabled = true;
-  $("draftState").textContent = "agent researching live web...";
+  const t0 = Date.now();
+  // The Render free tier sleeps after ~15 min idle: the first request can take
+  // 30-90s to wake it. Show a live timer so it never looks like a hang.
+  $("draftState").textContent = "agent starting (may take up to ~60s if waking)...";
+  const tickDraft = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    $("draftState").textContent = s < 8
+      ? "agent starting (may take up to ~60s if waking)..."
+      : `agent working: researching live web + writing (${s}s)`;
+  }, 1000);
   try {
     const j = await agent("/api/plan", {
       topic, max_tokens: parseInt($("maxtokens").value || "600", 10),
@@ -113,12 +131,16 @@ $("draft").onclick = async () => {
     agentToken = j.token;
     $("scriptBox").value = j.script;
     const steps = (j.steps || []).length;
-    $("draftState").textContent = `drafted · ${steps} agent steps · research ${j.digest_chars} chars`;
+    $("draftState").textContent =
+      `drafted in ${Math.round((Date.now() - t0) / 1000)}s · ${steps} agent steps · research ${j.digest_chars} chars`;
     localStorage.setItem("pv_draft", JSON.stringify({
       topic, script: j.script, token: j.token, state: $("draftState").textContent,
     }));
     show($("app"), false); show($("draftCard"), true);
-  } catch (e) { $("draftState").textContent = "failed: " + e.message; }
+  } catch (e) {
+    $("draftState").textContent = `failed after ${Math.round((Date.now() - t0) / 1000)}s: ${e.message} — the agent may still be waking, try again in 30s`;
+  }
+  clearInterval(tickDraft);
   $("draft").disabled = false;
 };
 
@@ -185,6 +207,7 @@ $("reset").onclick = () => {
 };
 
 if (key()) {
+  warmAgent();
   $("gate").classList.add("hidden");
   show($("app"), true); show($("history"), true);
   loadHistory();

@@ -1,4 +1,4 @@
-"""Write repo secrets via GitHub API (reads PAT + values from local files, never prints them)."""
+"""Set repo secrets (RENDER_API_KEY + Kaggle + callback) via GitHub API."""
 import base64
 import json
 import os
@@ -8,6 +8,7 @@ from nacl import encoding as nacl_enc
 from nacl import public as nacl_public
 
 OWNER, REPO = "0xSatwik", "peter-video-maker-github"
+RENDER_API_KEY = "rnd_DfJYZqr2YBxwiMYbaLjTe67800s2"
 
 
 def load_env(path):
@@ -28,6 +29,7 @@ def api(pat, method, path, data=None):
         headers={
             "Authorization": f"Bearer {pat}",
             "Accept": "application/vnd.github+json",
+            "User-Agent": "pvm",
             "Content-Type": "application/json",
         },
         data=json.dumps(data).encode() if data is not None else None,
@@ -41,10 +43,11 @@ def main():
     env = load_env(os.path.join(home, ".peter-deploy", "deploy.env"))
     with open(os.path.join(home, ".kaggle", "kaggle.json"), encoding="utf-8") as f:
         kcreds = json.load(f)
+
     secrets = {
+        "RENDER_API_KEY": RENDER_API_KEY,
         "KAGGLE_USERNAME": kcreds["username"],
         "KAGGLE_KEY": kcreds["key"],
-        "CALLBACK_URL": "https://peter-video-maker.pages.dev/api/complete",
         "CALLBACK_SECRET": env["CALLBACK_SECRET"],
     }
     _, pub = api(env["GH_PAT"], "GET", "/actions/secrets/public-key")
@@ -55,10 +58,7 @@ def main():
             env["GH_PAT"],
             "PUT",
             f"/actions/secrets/{name}",
-            {
-                "encrypted_value": base64.b64encode(bytes(enc)).decode(),
-                "key_id": pub["key_id"],
-            },
+            {"encrypted_value": base64.b64encode(bytes(enc)).decode(), "key_id": pub["key_id"]},
         )
         print(name, st)
 

@@ -1,0 +1,55 @@
+name: Agent deploy + keep-warm
+
+# Two jobs:
+#  1) deploy-agent: every push touching agent/ triggers a Render deploy via the
+#     REST API. Render's own autoDeploy never fires because the GitHub App is not
+#     connected, so the previous agent kept running 2-day-old code.
+#  2) keep-warm: Render's free tier sleeps after ~15 min idle, which made the
+#     first "Draft script" click feel like a hang (30-90s cold start). A 10-min
+#     ping keeps the instance awake (public repo => Actions minutes are free).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/keep-agent-warm.yml'
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  deploy-agent:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy (API)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dam32667bikc7384vk20
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "RENDER_API_KEY secret missing -> skipping API deploy"; exit 0
+          fi
+          code=$(curl -s -o /tmp/out.json -w '%{http_code}' -X POST \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H 'Content-Type: application/json' -d '{}')
+          echo "deploy request -> HTTP $code"
+          cat /tmp/out.json | head -c 400
+          echo ""
+          case "$code" in 200|201|202) ;; *) echo "deploy trigger failed"; exit 1 ;; esac
+
+  keep-warm:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping agent health (wake it up)
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 https://peter-agent.onrender.com/health || echo 000)
+            echo "ping $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          echo "agent did not answer (may still be waking)"

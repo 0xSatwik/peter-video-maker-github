@@ -88,8 +88,13 @@ VOICE_REFS = {
     "stewie": [os.path.join(REPO_DIR, "assets/Stewies-voice.mp3")],
 }
 # Consistent ref + instruct = more stable cloning (docs/tips.md).
+# ONLY these attribute values are valid (docs/voice-design.md): gender
+# (male/female), age (child/teenager/young adult/middle-aged/elderly),
+# pitch (very low|low|moderate|high|very high pitch), style (whisper),
+# english accent (american/british/...). Anything else -> the model raises
+# "Unsupported instruct items found ..." and the line fails.
 INSTRUCTS = {
-    "peter": "male, american accent, energetic",
+    "peter": "male, american accent",
     "stewie": "male, british accent, child, high pitch",
 }
 for k, ps in VOICE_REFS.items():
@@ -142,15 +147,26 @@ def get_prompt(sp, ref):
 def synth_clone(sp, text, ref_audio):
     # Same call shape as the Colab UI generate() in Voice Cloning mode, plus a
     # consistent instruct (docs/tips.md: consistent ref+instruct = stabler clone).
-    kwargs = dict(text=text, language="English", num_step=NUM_STEP, speed=SPEED)
+    # If the model rejects the instruct (unsupported attribute), retry without it
+    # so one bad attribute never kills the whole line.
+    base = dict(text=text, language="English", num_step=NUM_STEP, speed=SPEED)
     prompt = get_prompt(sp, ref_audio)
     if prompt is not None:
-        kwargs["voice_clone_prompt"] = prompt
+        base["voice_clone_prompt"] = prompt
     else:
-        kwargs["ref_audio"] = ref_audio
-    if sp in INSTRUCTS and INSTRUCTS[sp]:
+        base["ref_audio"] = ref_audio
+
+    kwargs = dict(base)
+    if INSTRUCTS.get(sp):
         kwargs["instruct"] = INSTRUCTS[sp]
-    audio = model.generate(**kwargs)
+    try:
+        audio = model.generate(**kwargs)
+    except Exception as e:
+        if "instruct" in str(e).lower() and "instruct" in kwargs:
+            print(f"instruct rejected for {sp} ({e}) -> retrying without instruct")
+            audio = model.generate(**base)
+        else:
+            raise
     t = audio[0] if isinstance(audio[0], torch.Tensor) else torch.tensor(audio[0])
     if t.dim() == 1:
         t = t.unsqueeze(0)

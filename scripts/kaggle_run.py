@@ -20,7 +20,7 @@ import time
 import json
 
 KERNEL_DIR = os.environ.get("KERNEL_DIR", "kaggle/tts-kernel")
-KERNEL_SLUG = os.environ.get("KERNEL_SLUG", "chimpujain/peter-tts-auto")
+KERNEL_SLUG = os.environ.get("KERNEL_SLUG", "satwiksamanta/peter-tts-auto")
 SCRIPT_FILE = os.environ.get("SCRIPT_FILE", "config/scripts/EPISODE_01.txt")
 TIMEOUT = int(os.environ.get("POLL_TIMEOUT_MIN", "75")) * 60
 INTERVAL = int(os.environ.get("POLL_INTERVAL_SEC", "60"))

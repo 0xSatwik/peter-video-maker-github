@@ -64,7 +64,7 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KERNEL_SLUG: chimpujain/peter-tts-auto
+          KERNEL_SLUG: satwiksamanta/peter-tts-auto
           KERNEL_DIR: kaggle/tts-kernel
           SCRIPT_FILE: ${{ github.event.inputs.script_file || 'config/scripts/EPISODE_01.txt' }}
           POLL_TIMEOUT_MIN: '75'

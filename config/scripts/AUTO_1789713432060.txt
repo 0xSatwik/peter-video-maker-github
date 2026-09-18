@@ -1,0 +1,20 @@
+# JOB:e48ed68c-c354-4555-83d0-bd3be31aeec8
+# TOPIC:new anonymous ai model Union Alpha
+peter|male,curious,excited|Stewie, have you heard about that mysterious AI model Union Alpha that showed up on OpenRouter on September sixteenth?
+stewie|british,calm,precise|Yes, Peter. It was presented as a stealth model, with the developer deliberately kept anonymous while people investigated who was actually behind it.
+peter|male,impressed,confused|And everybody was acting like it was some brand-new supercomputer from another planet!
+stewie|british,dry,corrective|Not quite. It was later revealed to be Pareto 26.9, developed by Circuit & Chisel and offered through their Unbiased platform.
+peter|male,shocked,loud|Wait, so Union Alpha wasn't actually a totally separate giant AI model?
+stewie|british,precise,slightly smug|Correct. Pareto is a blended system that combines frontier and open models, rather than simply being one conventional model running alone.
+peter|male,excited,dumb|But it had a gigantic memory thingy, right? Like enough memory to remember every stupid thing I’ve ever done?
+stewie|british,condescending,technical|It had a context window of 262,144 tokens and could generate up to 131,072 tokens in a single completion. It also accepted both text and images and supported tool calling.
+peter|male,astonished,rambling|That is way more words than I use in an entire year! And it was free at first!
+stewie|british,annoyed,informative|Yes. The preview was initially offered at no charge, but the demand was so high that the anonymous free period ended far earlier than intended.
+peter|male,excited,confused|How high could the demand possibly be? Five guys typing, “Make me a picture of a chicken”?
+stewie|british,deadpan,corrective|Far higher. The Union Alpha account reported traffic reaching around one billion tokens per minute, followed by even greater demand as usage increased.
+peter|male,impressed,boastful|So it became famous because everyone wanted the secret robot!
+stewie|british,sharp,measured|That was certainly part of the attention. Its operator also claimed benchmark performance comparable to GPT-6 Astra and Claude Fable 5.1, although those performance figures were operator-reported rather than established by an independent public leaderboard.
+peter|male,casual,confused|Okay, so when do they stop hiding and officially release the thing?
+stewie|british,precise,informative|The planned official release was announced for October 10, 2026. The anonymous experiment ended early because demand exposed the practical problems of scaling it.
+peter|male,shocked,excited|And now everybody knows the secret?
+stewie|british,cold,amused|Indeed. Union Alpha was the disguise. Pareto 26.9 was the identity. And somehow, Peter, you were the last person on Earth to notice.

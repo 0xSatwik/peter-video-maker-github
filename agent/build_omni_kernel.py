@@ -183,7 +183,23 @@ def build_kwargs(sp, ref_audio, batch_n=None):
     return base
 
 def generate_with_fallback(base):
-    return model.generate(**base)
+    # Try full config; if an optional dep (normalize_text / instruct) fails, retry without it.
+    attempt = 1
+    while True:
+        try:
+            return model.generate(**base)
+        except Exception as e:
+            msg = str(e).lower()
+            if attempt == 1 and "instruct" in msg and "instruct" in base:
+                print(f"instruct rejected ({e}) -> retrying without instruct")
+                base = {k: v for k, v in base.items() if k != "instruct"}
+                attempt += 1
+            elif attempt <= 2 and "normalization" in msg or "wetestprocessing" in msg or "normalize_text" in msg:
+                print(f"normalize_text failed ({e}) -> retrying with normalize_text=False")
+                base["normalize_text"] = False
+                attempt += 1
+            else:
+                raise
 
 def to_tensor(audio):
     t = audio[0] if isinstance(audio[0], torch.Tensor) else torch.tensor(audio[0])

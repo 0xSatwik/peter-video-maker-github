@@ -62,6 +62,9 @@ COMBOS = [
     (64, 2.5),
 ]
 
+# NOTE: the line is already spelled out in words, so normalize_text is not
+# needed here (it requires the optional WeTextProcessing dependency).
+
 for steps, gs in COMBOS:
     name = f"step{steps}_gs{str(gs).replace('.', '')}"
     t0 = time.time()
@@ -73,7 +76,6 @@ for steps, gs in COMBOS:
             num_step=steps,
             guidance_scale=gs,
             speed=1.1,
-            normalize_text=True,
             pad_duration=0.0,
         )
         t = audio[0] if isinstance(audio[0], torch.Tensor) else torch.tensor(audio[0])

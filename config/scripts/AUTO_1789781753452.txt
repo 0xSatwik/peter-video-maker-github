@@ -1,0 +1,13 @@
+# JOB:9a6ab25a-9895-4867-a6ae-aa51b94fdf65
+# TOPIC:how testbook mocks can help you to crack your ssc cgl exam in 1st attempt
+# SPEED:peter=1.1,stewie=1
+stewie|british,calm|Peter, how are people clearing the SSC CGL exam on their very first attempt without losing their minds?
+peter|male,excited|They are using Testbook mocks to lock down the brand new fifteen minutes sectional timings across the sixty minute Tier one exam.
+stewie|british,smug|Wait, fifteen minutes per section? How do mocks even fix that?
+peter|male,curious|It trains your brain for the exact pressure of the twenty eight point five two lakh candidates competing across one hundred and forty one exam centres.
+stewie|british,calm|Holy crap, twenty eight lakh people? What else do those mocks cover?
+peter|male,impressed|Everything from the newly reintroduced Assistant Audit Officer posts to the mandatory Paper Three in Finance and Economics.
+stewie|british,precise|Wait, so it covers all twelve thousand two hundred and fifty six total vacancies too?
+peter|male,excited|All of them, plus the new streams for Statistical Investigator like Artificial Intelligence and Data Science.
+stewie|british,smug|Okay, that actually gives you a massive edge before the October Tier one window closes. How do I start practicing?
+peter|male,confident|Simple. Join my broadcast channel or Telegram for my bio.

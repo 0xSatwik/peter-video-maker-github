@@ -342,7 +342,14 @@ def assemble():
         filter_complex.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
 
     mix_inputs = "".join([f"[a{i}]" for i in range(len(audio_files_to_concat))])
-    filter_complex.append(f"{mix_inputs}amix=inputs={len(audio_files_to_concat)}:duration=longest:dropout_transition=0,volume={len(audio_files_to_concat)}[outa]")
+    # normalize=0 + NO volume multiplier. The old `amix, volume=N` chain scaled
+    # the mix up as inputs finished (1x -> Nx), clipping the tail of the video
+    # into the harsh "coughing" voice. Clips here are sequential, so a plain sum
+    # keeps the original levels.
+    filter_complex.append(
+        f"{mix_inputs}amix=inputs={len(audio_files_to_concat)}:duration=longest:"
+        f"dropout_transition=0:normalize=0,alimiter=limit=0.95:level=disabled[outa]"
+    )
     
     filter_str = ";".join(filter_complex)
     

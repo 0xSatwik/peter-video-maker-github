@@ -174,7 +174,9 @@ def build_kwargs(sp, ref_audio, batch_n=None):
     # Peter harsh (docs/tips.md: ref+instruct conflict = instability). Pure
     # reference cloning is smoother.
     base = dict(text=None, language="English", num_step=NUM_STEP,
-                guidance_scale=GUIDANCE, speed=SPEED)
+                guidance_scale=GUIDANCE, speed=SPEED,
+                pad_duration=0.1, fade_duration=0.1,
+                postprocess_output=True, normalize_text=True)
     if batch_n:
         base["text"] = [None] * batch_n
     prompt = get_prompt(sp, ref_audio)

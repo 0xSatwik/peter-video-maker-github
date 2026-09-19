@@ -376,6 +376,15 @@ def assemble():
     filters.append(f"[{last}][{caps_idx}:v]overlay=0:0[vout]")
 
     first_audio = caps_idx + 1
+
+    # --- AUDIO: SUM WITH normalize=0 (NOT amix+volume) ---------------------
+    # The old chain was `adelay ... amix, volume=N`. That is wrong: amix
+    # re-normalises by the number of *active* inputs, so as each clip finished
+    # the residual gain grew from 1x to Nx -> the tail of the video clipped
+    # (measured peak ramp 0.48 -> 1.00, 1347 clipped samples) which is exactly
+    # the harsh "coughing" voice at the end. Our clips are strictly sequential
+    # (separated by GAP_SECONDS, never overlapping), so a plain SUM with
+    # normalize=0 reproduces the original levels with zero clipping.
     mix = []
     for i, path in enumerate(audio_files):
         delay = int(clip_timing[i]['start'] * 1000)
@@ -383,8 +392,10 @@ def assemble():
         mix.append(f"[d{i}]")
     filters.append(
         f"{''.join(mix)}amix=inputs={len(audio_files)}:duration=longest:"
-        f"dropout_transition=0,volume={len(audio_files)}[outa]"
+        f"dropout_transition=0:normalize=0[cat]"
     )
+    # safety limiter: nothing can ever reach full scale
+    filters.append("[cat]alimiter=limit=0.95:level=disabled[outa]")
 
     cmd += [
         '-filter_complex', ";".join(filters),

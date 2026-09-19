@@ -62,29 +62,19 @@ def find_font():
 
 
 def load_character(name):
-    """Same processing as the old engine, but saved once as an RGBA PNG."""
-    import numpy as np
-    for ext in ['png', 'jpg', 'jpeg']:
-        src = f'assets/{name}.{ext}'
-        if not os.path.exists(src):
-            continue
-        log(f"   Loading {src}...")
-        img = Image.open(src).convert("RGBA")
-        data = np.array(img)
-        alpha = data[:, :, 3]
-        if np.sum(alpha == 0) / alpha.size * 100 < 5:
-            r, g, b = data[:, :, 0], data[:, :, 1], data[:, :, 2]
-            black_mask = (r < 30) & (g < 30) & (b < 30)
-            data[black_mask, 3] = 0
+    """Cut-out + border + shadow art (see scripts/char_art.py), saved as RGBA PNG.
 
-        target_h = int(CHAR_HEIGHT_BASE * CHAR_SCALES.get(name, 1.0))
-        scale = target_h / img.height
-        new_w = int(img.width * scale)
-        out = Image.fromarray(data).resize((new_w, target_h), Image.LANCZOS)
-        path = f'output/char_{name}.png'
-        out.save(path)
-        return {"path": path, "w": new_w, "h": target_h}
-    return None
+    Replaces the old near-black-only keying which left a blue anti-aliased halo
+    (the "background showing through" you saw around Peter/Stewie).
+    """
+    import char_art
+    got = char_art.load_character(name)
+    if not got:
+        return None
+    img, w, h = got
+    path = f'output/char_{name}.png'
+    img.save(path)
+    return {"path": path, "w": w, "h": h}
 
 
 def caption_block(text, active_word_idx, font):
@@ -118,24 +108,28 @@ def caption_block(text, active_word_idx, font):
     if current_line:
         lines.append(current_line)
 
-    # Old engine: draw.text((x, y_pos + line_idx*line_height), ...) where y_pos
-    # is the FIRST baseline at CAPTION_Y (block grows DOWN). So render on a
-    # full-size transparent canvas at exactly that y.
-    block = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+    # Old engine drew: draw.text((x, CAPTION_Y + line_idx*line_height), ...).
+    # Render into a SMALL strip covering exactly that area (fast PNG decode),
+    # and report the y where the strip must be overlaid so the text lands on
+    # the exact same pixels as before.
+    margin = STROKE_WIDTH + 8
+    top = int(max(0, CAPTION_Y - margin))
+    block_h = int(len(lines) * line_height + margin * 2)
+    block = Image.new("RGBA", (CANVAS_W, max(1, block_h)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(block)
 
     for line_idx, line_words in enumerate(lines):
         word_widths = [draw.textlength(w, font=font) for w, _ in line_words]
         line_width = sum(word_widths) + space_width * (len(line_words) - 1)
         x = (CANVAS_W - line_width) / 2
-        line_y = CAPTION_Y + line_idx * line_height
+        line_y = CAPTION_Y + line_idx * line_height - top
         for j, (word, orig_idx) in enumerate(line_words):
             fill = '#00FF00' if orig_idx == active_word_idx else '#FFFFFF'
             draw.text((x, line_y), word, font=font, fill=fill,
                       stroke_fill='#000000', stroke_width=STROKE_WIDTH)
             x += word_widths[j] + space_width
 
-    return block, 0
+    return block, top
 
 
 def probe_duration(path, ffprobe):
@@ -289,11 +283,11 @@ def assemble():
             if rendered is None:
                 state_cache[st] = (None, 0)
             else:
-                block, _ = rendered
+                block, top = rendered
                 path = f"{frames_dir}/cap_{len(state_cache):04d}.png"
                 block.save(path)
-                state_cache[st] = (path, 0)
-        path, _ = state_cache[st]
+                state_cache[st] = (path, top)
+        path, top = state_cache[st]
         if sequence and sequence[-1][0] == path and sequence[-1][1] == top:
             sequence[-1][2] += 1
         else:
@@ -301,17 +295,45 @@ def assemble():
 
     log(f"   {len(state_cache)} unique caption images, {len(sequence)} timeline runs")
 
+    # caption layer: sequence runs reference (path, top_y) pairs — rebuild the
+    # concat list so the overlay places each strip at its own y offset.
     blank = f"{frames_dir}/blank.png"
     Image.new("RGBA", (CANVAS_W, 8), (0, 0, 0, 0)).save(blank)
-    list_path = f"{frames_dir}/caps.txt"
-    with open(list_path, 'w') as f:
-        for path, _, frames in sequence:
-            file = os.path.abspath(path if path else blank)
+
+    # 1) one caption video per distinct y offset is overkill; instead place all
+    #    strips on a full-canvas transparent sheet per run (same visual result,
+    #    one video input, exact y placement per strip).
+    strip_frames = []
+    for path, top, frames in sequence:
+        strip_frames.append((path, top, frames))
+
+    # 2) build the caption layer as a full-canvas RGBA video: for every run,
+    #    paste the strip at (0, top) onto a transparent canvas and emit
+    #    `frames` copies via the concat demuxer.
+    canvas_frames_dir = f"{frames_dir}/caps_canvas"
+    shutil.rmtree(canvas_frames_dir, ignore_errors=True)
+    os.makedirs(canvas_frames_dir, exist_ok=True)
+
+    frame_idx = 0
+    list_path = f"{frames_dir}/caps_canvas.txt"
+    with open(list_path, "w") as f:
+        for path, top, frames in strip_frames:
+            if path:
+                strip = Image.open(path)
+                canvas = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+                canvas.paste(strip, (0, top), strip)
+            else:
+                canvas = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+            cf = f"{canvas_frames_dir}/c_{frame_idx:05d}.png"
+            canvas.save(cf)
             for _ in range(frames):
-                f.write(f"file '{file}'\n")
+                f.write(f"file '{cf}'\n")
                 f.write(f"duration {1.0 / FPS:.6f}\n")
-        last = sequence[-1][0] if sequence else None
-        f.write(f"file '{os.path.abspath(last if last else blank)}'\n")
+                frame_idx += 1
+            if frame_idx >= total_frames:
+                break
+        # concat demuxer needs the last file repeated once
+        f.write(f"file '{cf}'\n")
 
     log("\n🧩 BUILDING CAPTION LAYER...")
     caps_video = f"{frames_dir}/captions.mov"
@@ -320,6 +342,7 @@ def assemble():
         '-fps_mode', 'cfr', '-r', str(FPS),
         '-c:v', 'png', '-pix_fmt', 'rgba', caps_video,
     ], check=True, capture_output=True)
+    shutil.rmtree(canvas_frames_dir, ignore_errors=True)
     log(f"   ✅ caption layer ready ({time.time() - t_start:.1f}s elapsed)")
 
     log("\n🎞️ SINGLE-PASS RENDER (background + characters + captions + audio)...")

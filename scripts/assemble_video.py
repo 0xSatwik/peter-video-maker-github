@@ -65,30 +65,16 @@ def find_font():
 
 
 def load_character(name):
-    """Load character image with smart background handling."""
-    for ext in ['png', 'jpg', 'jpeg']:
-        path = f'assets/{name}.{ext}'
-        if os.path.exists(path):
-            log(f"   Loading {path}...")
-            img = Image.open(path).convert("RGBA")
-            data = np.array(img)
-            
-            # Smart background removal for solid black
-            alpha = data[:, :, 3]
-            fully_transparent = np.sum(alpha == 0) / alpha.size * 100
-            if fully_transparent < 5:
-                r, g, b = data[:, :, 0], data[:, :, 1], data[:, :, 2]
-                black_mask = (r < 30) & (g < 30) & (b < 30)
-                data[black_mask, 3] = 0
-
-            # Scale to specific character height
-            target_h = int(CHAR_HEIGHT_BASE * CHAR_SCALES.get(name, 1.0))
-            scale = target_h / img.height
-            new_w = int(img.width * scale)
-            img_resized = Image.fromarray(data).resize((new_w, target_h), Image.LANCZOS)
-            return img_resized
-            
-    return None
+    """Cut-out + border + shadow art (scripts/char_art.py) — same look as the
+    fast engine. Replaces the old near-black-only keying that left a blue
+    anti-aliased halo around the characters."""
+    import char_art
+    got = char_art.load_character(name)
+    if not got:
+        return None
+    img, _, _ = got
+    log(f"   Loading assets/{name}.png (clean cut-out + border)")
+    return img
 
 
 def draw_caption_with_highlight(draw, text, active_word_idx, font, canvas_w, y_pos):

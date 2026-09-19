@@ -10,6 +10,12 @@ export async function onRequestPost({ request, env }) {
   try { body = await request.json(); } catch { return Response.json({ error: "bad json" }, { status: 400 }); }
   const topic = (body.topic || "").toString().slice(0, 300);
   const script = (body.script || "").toString().slice(0, 8000);
+  const speeds = body.speeds && typeof body.speeds === "object"
+    ? {
+        peter: Math.min(1.4, Math.max(0.7, parseFloat(body.speeds.peter) || 1.1)),
+        stewie: Math.min(1.4, Math.max(0.7, parseFloat(body.speeds.stewie) || 1.0)),
+      }
+    : { peter: 1.1, stewie: 1.0 };
   if (!topic) return Response.json({ error: "topic required" }, { status: 400 });
 
   // Script is drafted + approved by the user via the Render agent.
@@ -18,10 +24,10 @@ export async function onRequestPost({ request, env }) {
   if (lines.length < 2)
     return Response.json({ error: "invalid script: need peter|tags|text lines (draft via agent first)" }, { status: 400 });
 
-  // Commit script to repo (job id embedded; '#' lines are ignored by the TTS parser)
+  // Commit script to repo (job id + voice speeds embedded; '#' lines ignored by parser)
   const id = crypto.randomUUID();
   const fname = `config/scripts/AUTO_${Date.now()}.txt`;
-  const content = `# JOB:${id}\n# TOPIC:${topic}\n` + lines.join("\n") + "\n";
+  const content = `# JOB:${id}\n# TOPIC:${topic}\n# SPEED:peter=${speeds.peter},stewie=${speeds.stewie}\n` + lines.join("\n") + "\n";
   const b64 = btoa(unescape(encodeURIComponent(content)));
   const repo = env.GITHUB_REPO;
   const gh = { Authorization: "Bearer " + env.GITHUB_PAT, Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "peter-video-maker" };

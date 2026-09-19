@@ -118,3 +118,15 @@ pre {
 .badge.error { background: rgba(255, 107, 129, .15); color: var(--err) }
 .badge.working { background: rgba(124, 92, 255, .18); color: var(--accent) }
 .empty { color: var(--dim); font-size: 13px; text-align: center; padding: 10px }
+
+/* advanced options */
+details.controls { margin: 10px 0 2px; border: 1px solid var(--line); border-radius: 10px; background: #0e1120 }
+details.controls summary { padding: 10px 14px; cursor: pointer; color: var(--dim); font-size: 13.5px; list-style: none }
+details.controls summary::before { content: "▸ "; color: var(--accent) }
+details.controls[open] summary::before { content: "▾ "; color: var(--accent) }
+details.controls > div { padding: 0 14px 12px }
+details.controls label { flex: 0 0 130px }
+details.controls select, details.controls input[type="number"] {
+  flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: #141827; color: var(--text); font-size: 13px;
+}

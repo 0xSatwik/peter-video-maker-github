@@ -88,11 +88,9 @@ def load_character(name):
 
 
 def caption_block(text, active_word_idx, font):
-    """Render one caption state to a small transparent PNG (full width).
-
-    Mirrors draw_caption_with_highlight() exactly: uppercase, word-wrap to
-    CANVAS_W - 2*CAPTION_PADDING, centered lines, white words, active word
-    bright green, black stroke. Returns (image, top_y) for the overlay.
+    """Render one caption state at FULL canvas size, overlaying exactly where
+    the old engine drew it (draw.text at y=CAPTION_Y), so the caption position
+    is pixel-identical to the old engine. Returns (image, top_y=0).
     """
     probe = ImageDraw.Draw(Image.new("RGBA", (CANVAS_W, CANVAS_H)))
     words = text.upper().split()
@@ -120,27 +118,24 @@ def caption_block(text, active_word_idx, font):
     if current_line:
         lines.append(current_line)
 
-    total_text_height = len(lines) * line_height
-    start_y = CAPTION_Y - total_text_height / 2
-
-    margin = STROKE_WIDTH + 8
-    top = int(max(0, start_y - margin))
-    bottom = int(min(CANVAS_H, start_y + total_text_height + margin))
-    block = Image.new("RGBA", (CANVAS_W, max(1, bottom - top)), (0, 0, 0, 0))
+    # Old engine: draw.text((x, y_pos + line_idx*line_height), ...) where y_pos
+    # is the FIRST baseline at CAPTION_Y (block grows DOWN). So render on a
+    # full-size transparent canvas at exactly that y.
+    block = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(block)
 
     for line_idx, line_words in enumerate(lines):
         word_widths = [draw.textlength(w, font=font) for w, _ in line_words]
         line_width = sum(word_widths) + space_width * (len(line_words) - 1)
         x = (CANVAS_W - line_width) / 2
-        line_y = start_y + line_idx * line_height - top
+        line_y = CAPTION_Y + line_idx * line_height
         for j, (word, orig_idx) in enumerate(line_words):
             fill = '#00FF00' if orig_idx == active_word_idx else '#FFFFFF'
             draw.text((x, line_y), word, font=font, fill=fill,
                       stroke_fill='#000000', stroke_width=STROKE_WIDTH)
             x += word_widths[j] + space_width
 
-    return block, top
+    return block, 0
 
 
 def probe_duration(path, ffprobe):
@@ -294,11 +289,11 @@ def assemble():
             if rendered is None:
                 state_cache[st] = (None, 0)
             else:
-                block, top = rendered
+                block, _ = rendered
                 path = f"{frames_dir}/cap_{len(state_cache):04d}.png"
                 block.save(path)
-                state_cache[st] = (path, top)
-        path, top = state_cache[st]
+                state_cache[st] = (path, 0)
+        path, _ = state_cache[st]
         if sequence and sequence[-1][0] == path and sequence[-1][1] == top:
             sequence[-1][2] += 1
         else:

@@ -28,7 +28,39 @@
       <input id="maxtokens" type="number" value="600" min="200" max="2000" step="50" />
       <button id="draft">✨ Draft script (agent)</button>
     </div>
+
+    <details class="controls">
+      <summary>⚙️ Advanced options</summary>
+      <div class="row">
+        <label>Mode</label>
+        <select id="mode">
+          <option value="agent">🤖 Agent (researches live web, drafts for you)</option>
+          <option value="direct">✍️ Direct (paste your own script, no agent)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Peter voice speed</label>
+        <input id="peterSpeed" type="number" value="1.1" min="0.7" max="1.4" step="0.05" />
+      </div>
+      <div class="row">
+        <label>Stewie voice speed</label>
+        <input id="stewieSpeed" type="number" value="1.0" min="0.7" max="1.4" step="0.05" />
+      </div>
+      <p class="hint">Direct mode: paste a full script below and generate immediately (no research). Speeds: 1.0 = natural, 1.1 = slightly faster (default for Peter), higher = faster talking.</p>
+    </details>
     <p class="hint">The agent plans searches, browses the live web for the freshest facts, then drafts and critiques the script. You edit before generating.</p>
+  </section>
+
+  <section id="directCard" class="card hidden">
+    <h2>✍️ Direct script</h2>
+    <textarea id="directScript" rows="12" spellcheck="false" placeholder="stewie|british,calm|Peter, how does this work?
+peter|male,excited|It works like this...
+(keep alternating, format: speaker|tags|text)"></textarea>
+    <div class="row">
+      <button id="directGo">✅ Generate video</button>
+      <button id="directBack" class="ghost">Back</button>
+    </div>
+    <p class="hint">No agent involved — the script you paste is used as-is. Keep speakers alternating peter/stewie.</p>
   </section>
 
   <section id="draftCard" class="card hidden">

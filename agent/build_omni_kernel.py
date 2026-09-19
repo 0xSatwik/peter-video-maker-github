@@ -25,6 +25,7 @@ contract as the old MOSS kernel, so `scripts/assemble_video.py` works unchanged.
 
 CELL_DEPS = """# Cell 1: deps (Kaggle already ships torch + torchaudio with CUDA)
 !pip install -q omnivoice
+!pip install -q "omnivoice[tn]" || true   # WeTextProcessing for normalize_text (numbers spoken naturally)
 !python -c "import torchaudio" 2>/dev/null || pip install -q torchaudio
 print("deps ok")
 """
@@ -61,6 +62,20 @@ def preprocess_text(t):
     t = re.sub(r'\\s+', ' ', t)
     t = re.sub(r'([.,!?])([A-Za-z])', r'\\1 \\2', t)
     return t.strip()
+
+def parse_speeds(path):
+    speeds = {"peter": 1.1, "stewie": 1.0}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for raw in f:
+                m = re.match(r"#\\s*SPEED:\\s*peter=([\\d.]+)\\s*,\\s*stewie=([\\d.]+)", raw)
+                if m:
+                    speeds["peter"] = max(0.7, min(1.4, float(m.group(1))))
+                    speeds["stewie"] = max(0.7, min(1.4, float(m.group(2))))
+                    break
+    except Exception:
+        pass
+    return speeds
 
 def parse_script(path):
     lines = []
@@ -125,6 +140,8 @@ SPEED = 1.0
 
 lines = parse_script(SCRIPT)
 print(f"Lines: {len(lines)}")
+SPEEDS = parse_speeds(SCRIPT)
+print(f"Speeds: peter={SPEEDS['peter']} stewie={SPEEDS['stewie']}")
 
 def resolve_ref(sp):
     for p in VOICE_REFS.get(sp, []):
@@ -196,6 +213,9 @@ for sp, idxs in by_speaker.items():
     try:
         base = build_kwargs(sp, ref, batch_n=len(texts))
         base["text"] = texts
+        sp_speed = SPEEDS.get(sp, 1.0)
+        base["speed"] = sp_speed
+        base["normalize_text"] = True   # numbers/dates spoken naturally
         audios = generate_with_fallback(base)
         if not isinstance(audios, (list, tuple)) or len(audios) != len(texts):
             raise RuntimeError(f"batch returned {len(audios)} for {len(texts)} texts")

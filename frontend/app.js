@@ -22,6 +22,13 @@ const agent = async (path, body) => {
 
 let timer = null, poller = null, startedAt = 0, doneAt = 0, agentToken = null;
 
+function currentSpeeds() {
+  return {
+    peter: parseFloat($("peterSpeed").value) || 1.1,
+    stewie: parseFloat($("stewieSpeed").value) || 1.0,
+  };
+}
+
 function fmt(ms) {
   const s = Math.floor(ms / 1000);
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
@@ -171,7 +178,7 @@ $("approve").onclick = async () => {
   try {
     const j = await api("/api/generate", {
       method: "POST", headers: headers(),
-      body: JSON.stringify({ topic, script }),
+      body: JSON.stringify({ topic, script, speeds: currentSpeeds() }),
     });
     localStorage.setItem("pv_job", j.id);
     localStorage.removeItem("pv_draft");
@@ -179,6 +186,34 @@ $("approve").onclick = async () => {
     showJob(j.id);
   } catch (e) { alert("Failed: " + e.message); }
   $("approve").disabled = false;
+};
+
+/* ---------- direct mode: paste a script, skip the agent ---------- */
+$("mode").onchange = () => {
+  const direct = $("mode").value === "direct";
+  show($("directCard"), direct);
+  if (direct) { show($("app"), false); show($("draftCard"), false); }
+  else { show($("directCard"), false); show($("app"), true); }
+};
+$("directBack").onclick = () => {
+  show($("directCard"), false); show($("app"), true);
+  $("mode").value = "agent";
+};
+$("directGo").onclick = async () => {
+  const script = $("directScript").value.trim();
+  const topic = $("topic").value.trim() || "custom script";
+  if (!script) return;
+  $("directGo").disabled = true;
+  try {
+    const j = await api("/api/generate", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({ topic, script, speeds: currentSpeeds() }),
+    });
+    localStorage.setItem("pv_job", j.id);
+    startedAt = Date.now(); doneAt = 0;
+    showJob(j.id);
+  } catch (e) { alert("Failed: " + e.message); }
+  $("directGo").disabled = false;
 };
 
 $("back").onclick = () => {

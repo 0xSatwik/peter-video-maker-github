@@ -1,0 +1,13 @@
+# JOB:d46f6f53-1a40-4ca1-8168-48d024407e89
+# TOPIC:how testbook mocks can help you to crack your ssc cgl exam in 1st attempt
+# SPEED:peter=1.1,stewie=1
+stewie|british,calm|Peter, how are people actually cracking the SSC CGL exam without losing their minds?
+peter|male,confident,excited|By knowing the dates, that's how. The notice dropped on September twelfth, two thousand twenty-six, and the exam runs from September thirtieth to October thirtieth.
+stewie|british,smug|Wait, a whole month of testing? How many spots are we talking about?
+peter|male,curious,amazed|Twelve thousand two hundred and fifty-six total vacancies for Group B and Group C posts. That is a lot of desk jobs.
+stewie|british,precise|And when do the digital passes come out for this computer-based examination?
+peter|male,excited,focused|Admit cards drop on September twenty-seventh on the official website ssc.gov.in.
+stewie|british,calm|Right, and what does the actual paper look like once you sit down?
+peter|male,proud,energetic|One hundred objective-type multiple-choice questions worth two hundred total marks, split across four sections of twenty-five questions each.
+stewie|british,smug|Let me guess, fifty marks per segment for things like quantitative aptitude and general awareness?
+peter|male,excited,casual|Nailed it. Now go check the broadcast channel or Telegram in bio.

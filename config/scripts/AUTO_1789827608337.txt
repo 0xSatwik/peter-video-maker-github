@@ -1,0 +1,13 @@
+# JOB:15dd0a22-78d9-47e4-8eaa-a1812b54781b
+# TOPIC:how moving site from nextjs to sveltekit in cloudflare saves lot of money
+# SPEED:peter=1.1,stewie=1
+stewie|british,calm|Peter, why are developers suddenly ditching Next.js for SvelteKit when Next has been the default choice for years?
+peter|male,curious,excited|Because SvelteKit version three point zero reached release candidate status in early September twenty twenty-six, bringing lightning-fast server-side rendering without all the complex server actions boilerplate.
+stewie|british,calm,smug|Wait, so it ditches all that heavy Next.js configuration overhead while still giving you a full-stack meta-framework?
+peter|male,curious,excited|Exactly, plus Svelte version five point five seven point zero shipped on August twenty-eighth twenty twenty-six, making runes and component reactivity smoother than ever.
+stewie|british,calm,surprised|Does that mean smaller bundles compared to the usual React and Next.js stack?
+peter|male,curious,excited|Stack Overflow's twenty twenty-six survey showed Svelte usage sitting at seven point two percent, and its compiled output is significantly leaner because it doesn't need a heavy virtual DOM running in the browser.
+stewie|british,calm,precise|So developers get a cleaner DX and faster page loads without fighting the framework.
+peter|male,curious,excited|Spot on, and it compiles down to tiny, highly optimized vanilla JavaScript files that execute instantly.
+stewie|british,calm,smug|Well, that sounds rather refreshing after dealing with massive Next.js bundle sizes. Where can I find the SvelteKit migration guide?
+peter|male,curious,excited|Simple. Join my broadcast channel or Telegram for my bio.

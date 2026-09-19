@@ -18,9 +18,14 @@ Pushed by GitHub Actions via `kaggle kernels push`. Starts GPU, generates all
 clips with cloned Peter/Stewie voices, auto-stops.
 
 Port of the Colab **OmniVoice UI by Hunaar Ansari** (`omnivoice` +
-`k2-fsa/OmniVoice`, Voice Cloning mode, `num_step=32`, `speed=1.0`, 24 kHz).
+`k2-fsa/OmniVoice`, Voice Cloning mode, `num_step=32`, `speed` read from the
+script's `# SPEED:` header (default peter 1.1), 24 kHz).
 Output goes to `/kaggle/working/audio/` with `metadata.json` — the same
 contract as the old MOSS kernel, so `scripts/assemble_video.py` works unchanged.
+
+NOTE: we do NOT pass `instruct` to `generate()` — instruct fights the cloned
+voice and made Peter harsh (see docs/tips.md: "when ref_audio and instruct
+conflict, the model follows the reference audio" — any conflict = instability).
 """
 
 CELL_DEPS = """# Cell 1: deps (Kaggle already ships torch + torchaudio with CUDA)
@@ -102,16 +107,13 @@ VOICE_REFS = {
               os.path.join(REPO_DIR, "assets/peter-voice.mp3")],
     "stewie": [os.path.join(REPO_DIR, "assets/Stewies-voice.mp3")],
 }
-# Consistent ref + instruct = more stable cloning (docs/tips.md).
-# ONLY these attribute values are valid (docs/voice-design.md): gender
-# (male/female), age (child/teenager/young adult/middle-aged/elderly),
-# pitch (very low|low|moderate|high|very high pitch), style (whisper),
-# english accent (american/british/...). Anything else -> the model raises
-# "Unsupported instruct items found ..." and the line fails.
-INSTRUCTS = {
-    "peter": "male, american accent",
-    "stewie": "male, british accent, child, high pitch",
-}
+# Peter is anchored on the CLEANEST reference available; Stewie needs the
+# child/british character, so his reference is the only option.
+# We intentionally do NOT pass `instruct` (it fought the cloned voice and made
+# Peter harsh). Documented valid instruct attributes for reference:
+# gender male/female, age child|teenager|young adult|middle-aged|elderly,
+# pitch very low|low|moderate|high|very high pitch, style whisper,
+# English accents american|british|...
 for k, ps in VOICE_REFS.items():
     print(k, [p for p in ps if os.path.exists(p)] or "MISSING")
 """
@@ -167,6 +169,9 @@ def build_kwargs(sp, ref_audio, batch_n=None):
     # consistent instruct (docs/tips.md: consistent ref+instruct = stabler clone).
     # If the model rejects the instruct (unsupported attribute), retry without it
     # so one bad attribute never kills the whole line.
+# NOTE: we do NOT pass `instruct` — it fought the cloned voice and made
+    # Peter harsh (docs/tips.md: ref+instruct conflict = instability). Pure
+    # reference cloning is smoother.
     base = dict(text=None, language="English", num_step=NUM_STEP, speed=SPEED)
     if batch_n:
         base["text"] = [None] * batch_n
@@ -175,19 +180,10 @@ def build_kwargs(sp, ref_audio, batch_n=None):
         base["voice_clone_prompt"] = prompt
     else:
         base["ref_audio"] = ref_audio
-    if INSTRUCTS.get(sp):
-        base["instruct"] = INSTRUCTS[sp]
     return base
 
 def generate_with_fallback(base):
-    try:
-        return model.generate(**base)
-    except Exception as e:
-        if "instruct" in str(e).lower() and "instruct" in base:
-            print(f"instruct rejected ({e}) -> retrying without instruct")
-            no_instr = {k: v for k, v in base.items() if k != "instruct"}
-            return model.generate(**no_instr)
-        raise
+    return model.generate(**base)
 
 def to_tensor(audio):
     t = audio[0] if isinstance(audio[0], torch.Tensor) else torch.tensor(audio[0])
@@ -214,8 +210,9 @@ for sp, idxs in by_speaker.items():
         base = build_kwargs(sp, ref, batch_n=len(texts))
         base["text"] = texts
         sp_speed = SPEEDS.get(sp, 1.0)
-        base["speed"] = sp_speed
-        base["normalize_text"] = True   # numbers/dates spoken naturally
+        base["speed"] = sp_speed          # per-speaker speed (peter default 1.1)
+        base["normalize_text"] = True     # numbers/dates spoken naturally
+        base["pad_duration"] = 0.0        # keep pacing tight between lines
         audios = generate_with_fallback(base)
         if not isinstance(audios, (list, tuple)) or len(audios) != len(texts):
             raise RuntimeError(f"batch returned {len(audios)} for {len(texts)} texts")
@@ -228,6 +225,9 @@ for sp, idxs in by_speaker.items():
             try:
                 base = build_kwargs(sp, ref)
                 base["text"] = lines[i]["text"]
+                base["speed"] = SPEEDS.get(sp, 1.0)
+                base["normalize_text"] = True
+                base["pad_duration"] = 0.0
                 results[i] = to_tensor(generate_with_fallback(base))
             except Exception as e2:
                 print(f"FAIL {i}: {e2}")

@@ -137,7 +137,8 @@ warnings.filterwarnings("ignore")
 OUT = "/kaggle/working/audio"
 os.makedirs(OUT, exist_ok=True)
 
-NUM_STEP = 32
+NUM_STEP = 64            # max quality (docs: higher = better, slower)
+GUIDANCE = 2.5          # tighter adherence to the reference voice
 SPEED = 1.0
 
 lines = parse_script(SCRIPT)
@@ -172,7 +173,8 @@ def build_kwargs(sp, ref_audio, batch_n=None):
 # NOTE: we do NOT pass `instruct` — it fought the cloned voice and made
     # Peter harsh (docs/tips.md: ref+instruct conflict = instability). Pure
     # reference cloning is smoother.
-    base = dict(text=None, language="English", num_step=NUM_STEP, speed=SPEED)
+    base = dict(text=None, language="English", num_step=NUM_STEP,
+                guidance_scale=GUIDANCE, speed=SPEED)
     if batch_n:
         base["text"] = [None] * batch_n
     prompt = get_prompt(sp, ref_audio)
